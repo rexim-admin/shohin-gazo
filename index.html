@@ -760,3 +760,285 @@ ReactDOM.createRoot(document.getElementById("root")).render(E(App));
 </script>
 </body>
 </html>
+
+
+<!-- GPT AUTO PROMPT PATCH START -->
+<!--
+GPT自動タグ生成 + 自動プロンプト生成 追加コード
+==================================================
+
+目的:
+- 写真をGPTへ送信
+- OCR + 商品解析
+- 自動タグ生成
+- ジモティ向け即売プロンプト自動生成
+- ワンタップで画像生成
+
+==================================================
+① state追加
+==================================================
+
+const [autoTags,setAutoTags] = useState([]);
+const [generatedPrompt,setGeneratedPrompt] = useState("");
+
+==================================================
+② AIタグ生成関数追加
+==================================================
+
+async function analyzeProductForTags(b64,apiKey){
+
+  var prompt = `
+あなたは中古販売プロです。
+
+画像から:
+
+- 商品カテゴリ
+- メーカー
+- 容量
+- 特徴
+- 販売訴求
+
+を解析し、
+販売向けタグ候補を生成してください。
+
+JSONのみ返答:
+
+{
+ "title":"",
+ "tags":[
+   "SHARP",
+   "5.5kg",
+   "温風乾燥",
+   "洗濯機",
+   "配達可",
+   "激安"
+ ]
+}
+`;
+
+  var text;
+
+  if(apiKey && apiKey.startsWith("sk-")){
+
+    text = await callOAI(
+      apiKey,
+      [{
+        role:"user",
+        content:[
+          {
+            type:"image_url",
+            image_url:{
+              url:"data:image/jpeg;base64,"+b64
+            }
+          },
+          {
+            type:"text",
+            text:prompt
+          }
+        ]
+      }],
+      500
+    );
+
+  }else{
+
+    text = await callClaude(
+      [{
+        role:"user",
+        content:[
+          {
+            type:"image",
+            source:{
+              type:"base64",
+              media_type:"image/jpeg",
+              data:b64
+            }
+          },
+          {
+            type:"text",
+            text:prompt
+          }
+        ]
+      }],
+      500
+    );
+
+  }
+
+  return parseJSON(text);
+
+}
+
+==================================================
+③ 自動プロンプト生成
+==================================================
+
+function buildJimotyPrompt(tags){
+
+  if(!tags || !tags.length){
+    return "";
+  }
+
+  return (
+    "ジモティ即売画像作って\\n" +
+    tags.join("\\n")
+  );
+
+}
+
+==================================================
+④ OCR後に自動実行
+==================================================
+
+OCR完了後へ追加:
+
+var tagData = await analyzeProductForTags(
+  photoB64,
+  apiKey
+);
+
+setAutoTags(tagData.tags || []);
+
+var autoPrompt = buildJimotyPrompt(
+  tagData.tags || []
+);
+
+setGeneratedPrompt(autoPrompt);
+
+==================================================
+⑤ UI追加
+==================================================
+
+OCR結果UIの下へ追加:
+
+generatedPrompt && E(
+  "div",
+  {
+    style:{
+      marginTop:12,
+      background:"rgba(255,255,255,.04)",
+      borderRadius:10,
+      padding:12
+    }
+  },
+
+  E(
+    "div",
+    {
+      style:{
+        color:"#4ade80",
+        fontWeight:700,
+        marginBottom:8
+      }
+    },
+    "🤖 自動生成プロンプト"
+  ),
+
+  E(
+    "textarea",
+    {
+      value:generatedPrompt,
+      onChange:function(e){
+        setGeneratedPrompt(e.target.value);
+      },
+      style:Object.assign({},S.ta,{
+        minHeight:120
+      })
+    }
+  )
+)
+
+==================================================
+⑥ 自動タグ選択UI
+==================================================
+
+autoTags.length > 0 && E(
+  "div",
+  {
+    style:{
+      display:"flex",
+      flexWrap:"wrap",
+      gap:8,
+      marginTop:10
+    }
+  },
+
+  autoTags.map(function(tag,i){
+
+    return E(
+      "button",
+      {
+        key:i,
+        onClick:function(){
+
+          var exists =
+            generatedPrompt.includes(tag);
+
+          if(!exists){
+
+            setGeneratedPrompt(
+              generatedPrompt + "\\n" + tag
+            );
+
+          }
+
+        },
+
+        style:{
+          padding:"7px 12px",
+          borderRadius:20,
+          border:"none",
+          background:"rgba(255,215,0,.12)",
+          color:"#FFD700",
+          fontWeight:700,
+          cursor:"pointer"
+        }
+      },
+
+      "#" + tag
+
+    );
+
+  })
+
+)
+
+==================================================
+完成イメージ
+==================================================
+
+画像アップ
+↓
+GPT解析
+↓
+自動タグ生成
+
+#SHARP
+#5.5kg
+#温風乾燥
+#洗濯機
+#配達可
+#激安
+
+↓
+
+自動で:
+
+ジモティ即売画像作って
+SHARP
+5.5kg
+温風乾燥
+洗濯機
+配達可
+激安
+
+を生成
+
+↓
+
+そのままDALL-Eや
+GPT画像生成へ送信可能
+
+==================================================
+
+<!-- GPT AUTO PROMPT PATCH END -->
