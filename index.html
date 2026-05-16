@@ -390,6 +390,59 @@ async function genDescription(platform,ocr,userInputs,b64,apiKey){
   return verified.trim();
 }
 
+
+// 型番→正式名称補完
+async function enrichProductInfo(ocr,apiKey){
+  if(!ocr || !ocr.model || ocr.model==="不明") return ocr;
+
+  var prompt = `
+あなたは中古販売データ補完AIです。
+
+以下の商品情報を元に、
+正式名称と正式カラーを補完してください。
+
+型番: ${ocr.model}
+メーカー: ${ocr.brand || "不明"}
+OCR色: ${ocr.color || "不明"}
+
+推測は禁止。
+実在確認できる場合のみ補完。
+
+JSONのみ:
+{
+ "officialName":"",
+ "officialColor":""
+}
+`;
+
+  try{
+    var text;
+
+    if(apiKey&&apiKey.startsWith("sk-")){
+      text=await callOAI(apiKey,[{
+        role:"user",
+        content:prompt
+      }],300);
+    }else{
+      text=await callClaude([{
+        role:"user",
+        content:prompt
+      }],300);
+    }
+
+    var enriched=parseJSON(text);
+
+    ocr.officialName=enriched.officialName||"";
+    ocr.officialColor=enriched.officialColor||"";
+
+    return ocr;
+
+  }catch(e){
+    console.log(e);
+    return ocr;
+  }
+}
+
 // ════════════════════════════════════════════
 //  PAGES
 // ════════════════════════════════════════════
