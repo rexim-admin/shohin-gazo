@@ -289,22 +289,35 @@ async function compositeAdCanvas(bgUrl){
   });
 }
 
-// ── 画像をリサイズしてbase64に ────────────
+// ── 画像をリサイズしてbase64に（iOS Safari対応版）────────────
 function imgToB64(file,maxSize=900){
   return new Promise((res,rej)=>{
     const reader=new FileReader();
     reader.onload=e=>{
       const img=new Image();
       img.onload=()=>{
-        const sc=Math.min(1,maxSize/Math.max(img.width,img.height));
-        const c=document.createElement("canvas");
-        c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
-        c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-        res({b64:c.toDataURL("image/png").split(",")[1],src:e.target.result,w:c.width,h:c.height});
+        try{
+          const sc=Math.min(1,maxSize/Math.max(img.width,img.height));
+          const c=document.createElement("canvas");
+          c.width=Math.round(img.width*sc);
+          c.height=Math.round(img.height*sc);
+          const ctx=c.getContext("2d");
+          // iOSでCanvas描画が失敗した場合を検知
+          ctx.drawImage(img,0,0,c.width,c.height);
+          const dataUrl=c.toDataURL("image/png");
+          if(!dataUrl||dataUrl==="data:,")throw new Error("Canvas描画失敗");
+          const b64=dataUrl.split(",")[1];
+          // サムネイルはCanvasのdata URLを使用（元ファイルではなく）
+          res({b64,src:dataUrl,w:c.width,h:c.height});
+        }catch(err){
+          rej(new Error("画像変換失敗: "+err.message));
+        }
       };
-      img.onerror=rej;img.src=e.target.result;
+      img.onerror=()=>rej(new Error("画像読込失敗"));
+      img.src=e.target.result;
     };
-    reader.onerror=rej;reader.readAsDataURL(file);
+    reader.onerror=()=>rej(new Error("ファイル読込失敗"));
+    reader.readAsDataURL(file);
   });
 }
 // ── コンポーネント ────────────────────────
@@ -499,10 +512,13 @@ function Main({logout}){
     if(!hasApi){setError("画像の登録にはOpenAI APIキーが必要です");return;}
     setImgLoading(true);setError("");
     try{
-      const results=await Promise.all(files.slice(0,4-images.length).map(f=>imgToB64(f,900)));
+      const targets=files.slice(0,4-images.length);
+      const results=await Promise.all(targets.map(f=>imgToB64(f,900)));
       setImages(prev=>[...prev,...results]);
       setOcrData(null);setAiImgUrl(null);setDescResult("");
-    }catch(e){setError("画像処理エラー: "+e.message);}
+    }catch(e){
+      setError("画像処理エラー: "+e.message+"（HEIC形式の場合はJPEG/PNGに変換してください）");
+    }
     setImgLoading(false);ev.target.value="";
   }
   function removeImg(i){setImages(prev=>prev.filter((_,j)=>j!==i));setOcrData(null);}
