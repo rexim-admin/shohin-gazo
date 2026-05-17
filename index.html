@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v2.2.9</title>
+<title>中古販売CTRエンジン v3.0.0</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.9";
+const VER="v3.0.0";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -138,15 +138,87 @@ ${userStr||"(なし)"}
 - 説明文本文のみを出力する(注釈・補足・見出し不要)`;
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
-// DALL-E 3 生成 (images/edits API)
+// ── v3 広告合成エンジン ──────────────────
 const PRESETS={
-  sale:{l:"🔥 激安チラシ",s:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. High CTR, bold RED/NAVY text, 'SALE' feel, discount store style. Moderate text amount, product is main focus."},
-  luxury:{l:"✨ 高級ミニマル",s:"Luxury minimalist furniture ad. Clean whitespace, calm beige/white/black tones, sophisticated typography, interior magazine style but realistic for Mercari. Minimal text."},
-  ikea:{l:"🛋 IKEAポップ",s:"Scandinavian IKEA style. Bright, cheerful, casual, modern. IKEA blue/yellow accents, natural shadows, realistic and stylish."},
-  apple:{l:"🍎 Apple風",s:"Apple-style ultra-minimalist. Pure white background, black typography, premium feel, extremely minimal text, iconic Apple ad aesthetic."},
-  gadget:{l:"⚡ ガジェット系",s:"Futuristic tech style. Deep navy/black background, stylish cyan/green glows, sleek typography, tech-focused but realistic."},
-  auto:{l:"🤖 AUTO",s:""}
+  sale:{l:"🔥 激安チラシ",s:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. High CTR, bold RED/NAVY text, 'SALE' feel, discount store style. Moderate text amount, product is main focus.",type:"appliance"},
+  luxury:{l:"✨ 高級ミニマル",s:"Luxury minimalist furniture ad. Clean whitespace, calm beige/white/black tones, sophisticated typography, interior magazine style but realistic for Mercari. Minimal text.",type:"furniture"},
+  ikea:{l:"🛋 IKEAポップ",s:"Scandinavian IKEA style. Bright, cheerful, casual, modern. IKEA blue/yellow accents, natural shadows, realistic and stylish.",type:"furniture"},
+  apple:{l:"🍎 Apple風",s:"Apple-style ultra-minimalist. Pure white background, black typography, premium feel, extremely minimal text, iconic Apple ad aesthetic.",type:"gadget"},
+  gadget:{l:"⚡ ガジェット系",s:"Futuristic tech style. Deep navy/black background, stylish cyan/green glows, sleek typography, tech-focused but realistic.",type:"gadget"},
+  hotel:{l:"🏨 高級ホテル風",s:"High-end hotel room background. Warm lighting, elegant atmosphere, premium furniture setting. Realistic and sophisticated.",type:"furniture"},
+  studio:{l:"📸 スタジオ風",s:"Professional photo studio background. Clean, neutral grey/white, soft shadows, high-end product photography look.",type:"appliance"},
+  cafe:{l:"☕ カフェ風",s:"Stylish cafe interior background. Natural wood, warm lighting, cozy atmosphere, lifestyle setting.",type:"furniture"},
+  auto:{l:"🤖 AUTO",s:"",type:"auto"}
 };
+
+// Canvasで広告デザインを合成
+async function compositeAd(bgUrl,data,mode){
+  return new Promise((res,rej)=>{
+    const canvas=document.createElement("canvas");
+    canvas.width=1024;canvas.height=1024;
+    const ctx=canvas.getContext("2d");
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>{
+      ctx.drawImage(img,0,0,1024,1024);
+      const preset=PRESETS[mode]||PRESETS.auto;
+      const type=preset.type==="auto"?(data.catId==="appliance"?"appliance":"furniture"):preset.type;
+      
+      // デザインロジック
+      if(type==="appliance"){
+        // 激安チラシ風
+        // 左上バッジ
+        ctx.fillStyle="#ef4444";
+        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(200,0);ctx.lineTo(0,200);ctx.fill();
+        ctx.save();ctx.translate(60,60);ctx.rotate(-Math.PI/4);
+        ctx.fillStyle="#fff";ctx.font="900 40px "+FH;ctx.textAlign="center";ctx.fillText("激安",0,0);ctx.restore();
+        
+        // 下部情報パネル
+        const grad=ctx.createLinearGradient(0,800,0,1024);
+        grad.addColorStop(0,"transparent");grad.addColorStop(0.2,"rgba(0,0,0,.8)");grad.addColorStop(1,"#000");
+        ctx.fillStyle=grad;ctx.fillRect(0,800,1024,224);
+        
+        ctx.fillStyle="#FFD700";ctx.font="900 54px "+FH;ctx.textAlign="left";
+        ctx.fillText(data.brand||"",50,880);
+        ctx.fillStyle="#fff";ctx.font="900 72px "+FH;
+        ctx.fillText(data.productName||data.model||"特選品",50,960);
+        
+        if(data.delivery){
+          ctx.fillStyle="#10b981";ctx.roundRect(700,830,280,60,10);ctx.fill();
+          ctx.fillStyle="#fff";ctx.font="900 32px "+FH;ctx.textAlign="center";ctx.fillText(data.delivery,840,872);
+        }
+      }else if(type==="furniture"){
+        // 高級・ミニマル風
+        // 透過パネル
+        ctx.fillStyle="rgba(255,255,255,.85)";
+        ctx.fillRect(50,850,924,120);
+        ctx.strokeStyle="#000";ctx.lineWidth=2;ctx.strokeRect(55,855,914,110);
+        
+        ctx.fillStyle="#000";ctx.textAlign="center";
+        ctx.font="900 32px "+FE;ctx.fillText((data.brand||"PREMIUM SELECTION").toUpperCase(),512,895);
+        ctx.font="400 48px "+FH;ctx.fillText(data.productName||"Interior Collection",512,945);
+      }else{
+        // ガジェット・Apple風
+        ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,900,1024,124);
+        ctx.fillStyle="#fff";ctx.textAlign="center";
+        ctx.font="900 42px "+FE;ctx.fillText(data.brand+" "+(data.model||""),512,975);
+      }
+      
+      // キャッチコピー (共通)
+      if(data.catchCopy){
+        ctx.save();
+        ctx.shadowColor="rgba(0,0,0,.5)";ctx.shadowBlur=10;
+        ctx.fillStyle="#FFD700";ctx.font="900 44px "+FH;ctx.textAlign="right";
+        ctx.fillText("“ "+data.catchCopy+" ”",980,100);
+        ctx.restore();
+      }
+
+      res(canvas.toDataURL("image/jpeg",0.9));
+    };
+    img.onerror=rej;img.src=bgUrl;
+  });
+}
+
 async function doDalleGen(b64,catId,subCat,data,key,mode){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
   
@@ -159,44 +231,20 @@ async function doDalleGen(b64,catId,subCat,data,key,mode){
     else styleDesc=PRESETS.luxury.s;
   }
 
-  const dbText=data.dbText||"";
-  const prompt=`Professional Japanese product advertisement, 1:1 square.
-PRODUCT INFORMATION (MANDATORY):
-- Brand: ${data.brand || "Unknown"}
-- Product Name: ${data.productName || "Unknown"}
-- Model: ${data.model || "Unknown"}
-- Style: ${data.style || "Unknown"}
-- Specs: ${data.mainSpec}
-- Catchphrase: ${data.catchCopy}
-
-DATABASE INFORMATION:
-${dbText}
-
-STYLE (MANDATORY): ${styleDesc}
+  const prompt=`Professional Japanese product advertisement background.
+PRODUCT: ${data.brand} ${data.productName}
+STYLE: ${styleDesc}
 RULES:
 - Keep the ORIGINAL product photo exactly unchanged.
 - Do NOT redraw the product.
-- Do NOT recreate the product.
 - Do NOT change the product shape.
-- Preserve all scratches, labels, reflections, proportions and details.
-- ONLY add advertisement design elements around the product.
-- Photorealistic Japanese recycle-shop advertisement.
-- NOT illustration.
-- NOT CGI.
-- NOT 3D render.
-- Do NOT generate extra product photos.
-- Do NOT create collage layouts.
-- Use ONLY the original main product photo.
-- Model numbers are NOT capacity values.
-- Never infer capacity from model numbers.
-ONLY add:
-- Japanese advertisement text (amount based on style)
-- background elements (burst, glow, or clean)
-- shadows
-- delivery banners
-- sale badges
-- natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
-Quality: professional Photoshop-level Japanese used goods ad.`;
+- Preserve all scratches and details.
+- ONLY modify the BACKGROUND and LIGHTING around the product.
+- Remove messy background, clutter, and life-feel.
+- Enhance lighting to make the product look premium.
+- Photorealistic. NOT illustration. NOT CGI.
+- Do NOT add any text or labels (I will add them later).
+- Ensure the product is naturally grounded with realistic shadows.`;
 
   const byteString=atob(b64);
   const ab=new ArrayBuffer(byteString.length);
@@ -216,9 +264,11 @@ Quality: professional Photoshop-level Japanese used goods ad.`;
     body:fd
   });
   const d=await r.json();if(d.error)throw new Error(d.error.message);
-  if(d.data?.[0]?.url)return d.data[0].url;
-  if(d.data?.[0]?.b64_json)return "data:image/png;base64,"+d.data[0].b64_json;
-  throw new Error("画像生成レスポンス異常");
+  const bgUrl = d.data?.[0]?.url || ("data:image/png;base64,"+d.data?.[0]?.b64_json);
+  if(!bgUrl)throw new Error("画像生成レスポンス異常");
+  
+  // Canvasで合成
+  return await compositeAd(bgUrl,{...data,catId},mode);
 }
 // ── 画像をリサイズしてbase64に ────────────
 function imgToB64(file,maxSize=900){
@@ -602,8 +652,8 @@ function Main({logout}){
       ),
       descResult&&!descLoading&&h("div",null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
-          h("span",{style:{fontSize:9,color:"#4ade80",fontWeight:700}},"✅ 確定DB反映済み"),
-          h("span",{style:{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700}},descResult.length+"文字")
+          h("span",{fontSize:9,color:"#4ade80",fontWeight:700},"✅ 確定DB反映済み"),
+          h("span",{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700},descResult.length+"文字")
         ),
         h("textarea",{value:descResult,onChange:e=>setDescResult(e.target.value),style:G.ta}),
         h("button",{onClick:()=>{navigator.clipboard?.writeText(descResult).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});},
