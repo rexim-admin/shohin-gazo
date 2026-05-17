@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v3.1.0</title>
+<title>中古販売CTRエンジン v3.1.1</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v3.1.0";
+const VER="v3.1.1";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -137,60 +137,113 @@ ${userStr||"(なし)"}
 - 説明文本文のみを出力する(注釈・補足・見出し不要)`;
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
-// ── v3.1.0 高級スタジオ補正エンジン ──────────────────
+// ── v3.1.1 実写保持スタジオ補正エンジン ──────────────────
 const PRESETS={
-  auto:   {l:"🤖 AUTO",          bg:"clean studio",       light:"soft diffused",   floor:"subtle shadow on white floor"},
-  minimal:{l:"✨ 高級ミニマル",  bg:"pure white seamless cyclorama studio",bg2:"warm white",light:"soft overhead diffused light, gentle fill from left", floor:"very subtle natural drop shadow"},
-  apple:  {l:"🍎 Apple風",       bg:"pure white background, infinite white floor, Apple product photography",light:"ultra-soft overhead light, no harsh shadows",floor:"barely visible soft shadow directly beneath product"},
-  muji:   {l:"🌿 無印良品風",    bg:"warm off-white background, very light natural linen texture on floor",light:"warm soft window light from upper left",floor:"subtle warm shadow on off-white floor"},
-  nordic: {l:"🪵 北欧モダン",    bg:"light Scandinavian interior, white painted wall, light oak herringbone floor, very subtle",light:"natural daylight from left window, soft and diffused",floor:"natural wood floor with soft shadow"},
-  hotel:  {l:"🏨 高級ホテル風",  bg:"high-end hotel suite interior, warm beige wall, plush carpet or marble floor, very subtle and clean",light:"warm soft ambient lighting, multiple gentle sources",floor:"polished floor with gentle reflection"},
-  studio: {l:"📸 スタジオ",      bg:"professional photography studio, neutral mid-grey seamless paper background",light:"professional softbox lighting, balanced, no hotspots",floor:"grey seamless paper floor, soft natural shadow"},
-  outdoor:{l:"🌤 ナチュラル屋外",bg:"clean modern outdoor space, neutral concrete wall, natural daylight",light:"soft overcast natural daylight, no harsh shadows",floor:"smooth concrete floor with soft shadow"},
+  auto:   {l:"🤖 AUTO",
+    bg:"slightly warm off-white wall, faint gradient from upper-left (brighter) to lower-right (slightly darker), subtle depth",
+    floor:"light warm-grey floor surface, very subtle matte texture",
+    light:"soft natural light from upper-left at 45 degrees, gentle right-side fill, mild ambient room bounce",
+    shadow:"soft dark contact shadow directly under product base, slightly wider than product footprint, fades gradually, subtle thin floor reflection"},
+  minimal:{l:"✨ ミニマル",
+    bg:"off-white wall, faint vignette at corners, slight warm gradient top-left brighter to bottom-right slightly dimmer",
+    floor:"very light warm-grey matte floor, barely visible fine texture",
+    light:"large softbox simulation from upper-left, soft fill from right, natural indoor ambient",
+    shadow:"natural soft dark shadow under product, widens slightly as it extends away, 10-15% opacity floor reflection"},
+  muji:   {l:"🌿 無印良品",
+    bg:"warm linen-white wall, very subtle woven texture, faint warmth in upper-left corner",
+    floor:"light natural oak-tone floor, very subtle wood grain, matte finish",
+    light:"warm north window light from upper-left, soft diffused, faint right-side bounce from wall",
+    shadow:"warm-toned soft contact shadow, gentle floor reflection with warm tint"},
+  nordic: {l:"🪵 北欧",
+    bg:"cool white plaster wall, faint cool grey gradient, clean and simple",
+    floor:"light natural wood floor, horizontal planks, very subtle grain, semi-matte",
+    light:"cool natural daylight from left window, slight blue-white tone, soft fill from right",
+    shadow:"cool-tinted natural shadow, very thin floor reflection on wood surface"},
+  hotel:  {l:"🏨 ホテル",
+    bg:"warm beige plaster wall, faint warm gradient upper-left brighter, sophisticated depth",
+    floor:"smooth polished concrete or stone floor, very subtle warm sheen",
+    light:"warm ambient multi-source lighting, soft overhead with warm fill, slightly golden tone",
+    shadow:"warm-toned soft shadow, thin golden-tinted floor reflection"},
+  studio: {l:"📸 グレースタジオ",
+    bg:"neutral mid-grey seamless paper background, very subtle gradient lighter at center",
+    floor:"same grey seamless paper floor, smooth, matte",
+    light:"balanced professional two-softbox lighting, even exposure, no hotspots, no dramatic shadows",
+    shadow:"neutral grey soft contact shadow, no reflection"},
+  concrete:{l:"🏗 コンクリ",
+    bg:"raw concrete wall, subtle aggregate texture, cool neutral grey, slightly uneven tone",
+    floor:"smooth concrete floor, fine texture, slightly cooler than wall",
+    light:"overcast industrial daylight, flat and even, subtle shadows",
+    shadow:"cool grey natural shadow on concrete, no reflection"},
 };
 
-// DALLE3 with images/edits (v3.1.0 高級スタジオ補正版)
+// v3.1.1: 実写中古家電を簡易スタジオに置いたように見せる
 async function doDalleGen(b64,catId,subCat,data,key,mode){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
 
-  // AUTOはカテゴリで判定
+  // AUTOはカテゴリで自動判定
   let resolvedMode=mode;
   if(mode==="auto"){
-    if(catId==="apple")resolvedMode="apple";
-    else if(catId==="ikea"||catId==="other")resolvedMode="nordic";
+    if(catId==="apple")resolvedMode="minimal";
+    else if(catId==="ikea")resolvedMode="nordic";
     else if(catId==="pc")resolvedMode="studio";
-    else resolvedMode="minimal";
+    else if(catId==="dyson")resolvedMode="minimal";
+    else resolvedMode="auto";
   }
-  const preset=PRESETS[resolvedMode]||PRESETS.minimal;
+  const preset=PRESETS[resolvedMode]||PRESETS.auto;
 
-  const brand=data.brand||"";
-  const productName=data.productName||"";
+  // v3.1.1 コアプロンプト：実写質感保持・CGI禁止
+  const prompt=`This is a professional product photo retouching task for a Japanese used goods resale marketplace.
 
-  // v3.1.0 コアプロンプト：「スタジオ補正」特化、広告禁止
-  const prompt=`You are a professional product retouching studio AI. Your ONLY job is to replace the messy background with a clean studio environment while keeping the product 100% identical.
+TASK: Replace only the cluttered background behind this real product photo. Keep the product itself completely unchanged.
 
-BACKGROUND ENVIRONMENT:
+BACKGROUND TO CREATE:
 ${preset.bg}
 
-LIGHTING:
-${preset.light}
-
-FLOOR / SURFACE:
+FLOOR SURFACE:
 ${preset.floor}
 
-ABSOLUTE RULES - READ CAREFULLY:
-1. The product itself MUST remain pixel-perfect identical. Do NOT change: shape, color, texture, scratches, dents, logos, labels, stickers, door count, button layout, proportion, or any surface detail.
-2. Do NOT redraw or regenerate the product. Only replace what is BEHIND and AROUND the product.
-3. Remove ALL background clutter: messy rooms, cardboard boxes, cords, furniture, walls with marks, life clutter.
-4. Add ONLY: clean background, natural floor surface, realistic soft shadow beneath the product.
-5. The shadow must be a natural contact shadow - not floating, not dramatic. Product must look grounded.
-6. Lighting should be realistic and soft - like a professional photographer used a large softbox. No neon glows, no dramatic spotlights, no artificial color casts.
-7. ZERO text in the image. No Japanese characters, no English letters, no numbers, no labels, no overlays.
-8. NOT an advertisement. NOT a flyer. NOT CGI. NOT illustration.
-9. This is professional retouch photography for a high-end Japanese resale marketplace.
-10. The result must look like a human retoucher spent 30 minutes in Photoshop cleaning the background.
+LIGHTING ATMOSPHERE:
+${preset.light}
 
-OUTPUT: A single clean product photo with neutral studio background. Photorealistic. No text. No badges. No graphic design elements.`;
+SHADOW AND REFLECTION:
+${preset.shadow}
+
+CRITICAL PRODUCT PRESERVATION RULES:
+- DO NOT redraw, regenerate, smooth, or enhance the product in any way.
+- The product must retain ALL of its original characteristics: real-world noise, grain, minor imperfections, scratches, dents, worn edges, smudges, original color temperature, camera lens distortion, actual surface texture whether matte or glossy.
+- DO NOT sharpen the product edges. DO NOT apply any edge glow or halo. Keep the natural soft boundary between product and background.
+- DO NOT make the product look like CGI or 3D render. It must continue to look like an actual iPhone photo of a real used appliance.
+- DO NOT whiten, brighten, or over-expose the product surface.
+- DO NOT make plastic surfaces look artificially smooth or shiny.
+- Preserve all original shadows, reflections, and ambient occlusion already present on the product itself.
+
+BACKGROUND RULES:
+- The background must NOT be pure white (#ffffff). Add a very subtle gradient and faint spatial depth.
+- The background should feel like an actual indoor environment, not a cutout on a digital canvas.
+- There must be a gentle, believable transition from wall to floor (avoid a sharp line).
+- DO NOT use vignette so heavy it looks fake.
+
+WHAT TO REMOVE from the original background:
+- Messy room clutter, boxes, cables, other objects
+- Marks on walls, dirty floors, life items
+- Any existing harsh or unnatural shadows that do not belong to the product
+
+WHAT TO ADD:
+- Clean, natural-looking background environment as described above
+- Soft natural contact shadow directly under the product base
+- Very faint floor reflection (5-10% opacity only, not mirror-like)
+- Subtle environmental light bounce consistent with the background scene
+
+STRICT PROHIBITIONS:
+- No text, no Japanese characters, no labels, no overlays, no badges, no watermarks
+- No advertisement design elements
+- No product description
+- No price tags
+- No artificial glows, no neon, no dramatic rim lighting
+- No background removal effect (white halo at product edges is forbidden)
+- Not CGI, not illustration, not 3D render
+
+GOAL: The final image must look indistinguishable from a photo taken of this actual second-hand product placed in a simple photography studio. A viewer must believe a human photographer actually moved this product to a clean space and shot it with proper lighting. The product stays real. Only the environment changes.`;
 
   const byteString=atob(b64);
   const ab=new ArrayBuffer(byteString.length);
@@ -511,7 +564,7 @@ function Main({logout}){
     h("header",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,padding:"4px 8px"}},
       h("div",null,
         h("h1",{style:{fontSize:18,fontWeight:900,margin:0,background:"linear-gradient(to right,#fff,#94a3b8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"AI広告ジェネレーター"),
-        h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · プロスタジオ背景補正 · "+VER)
+        h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · 実写質感保持スタジオ補正 · "+VER)
       ),
       h("div",{style:{display:"flex",gap:8}},
         h("button",{onClick:()=>setScreen("api"),style:{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.4)",fontSize:10,padding:"6px 12px",borderRadius:20,cursor:"pointer"}},"API設定"),
@@ -630,7 +683,7 @@ function Main({logout}){
     ),
     h("div",{style:G.card},
       h("div",{style:G.ct},"STEP 5 · スタジオ背景補正"),
-      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.35)",marginBottom:10,lineHeight:1.6}},"商品本体はそのまま。背景だけをプロスタジオ環境に自然補正します。"),
+      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.35)",marginBottom:10,lineHeight:1.6}},"商品の傷・質感・ノイズはそのまま。背景だけをリアルなスタジオ環境に自然補正します。"),
       h("label",{style:G.lbl},"背景スタイル選択"),
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}},
         Object.entries(PRESETS).map(([id,p])=>{
