@@ -22,7 +22,7 @@ select option{background:#12121f;}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.2";
+const VER="v2.2.3";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -455,7 +455,31 @@ function Main({logout}){
     setAnalyzing(false);
   }
 
-  // AI画像生成
+  // 説明文生成(メルカリのみ・1択)
+  h("div",{style:G.card},
+    h("div",{style:G.ct},"STEP 4 · メルカリ商品説明 自動生成"),
+    h("div",{style:{fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:10,lineHeight:1.5}},"ファクトチェック付き・確認できた情報のみで生成します"),
+    descLoading&&h(Sp,{msg:"生成・ファクトチェック中..."}),
+    h("button",{onClick:runDesc,disabled:descLoading||!images.length||!hasApi,
+      style:PB(images.length&&hasApi&&!descLoading?"linear-gradient(135deg,#f59e0b,#ef4444)":"rgba(255,255,255,.05)",images.length&&hasApi&&!descLoading?"#fff":"rgba(255,255,255,.2)",{marginBottom:8,fontSize:13})},
+      descLoading?"生成中...":"✨ STEP4 商品説明データベースを生成する"
+    ),
+    descResult&&!descLoading&&h("div",null,
+      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
+        h("span",{style:{fontSize:9,color:"#4ade80",fontWeight:700}},"✅ ファクトチェック済"),
+        h("span",{style:{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700}},descResult.length+"文字")
+      ),
+      h("textarea",{value:descResult,onChange:e=>setDescResult(e.target.value),style:G.ta}),
+      h("button",{onClick:()=>{navigator.clipboard?.writeText(descResult).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});},
+        style:PB("rgba(255,255,255,.04)","rgba(255,255,255,.62)",{border:"1px solid rgba(255,255,255,.09)",marginTop:6,marginBottom:0,fontSize:12})},
+        copied?"✅ コピー完了！":"📋 コピーする"
+      )
+    )
+  ),
+
+
+
+// AI画像生成
   async function runDalle(){
     if(!images.length){setError("写真をアップロードしてください");return;}
     if(!hasApi){setError("OpenAI APIキーが必要です");return;}
@@ -498,7 +522,7 @@ function Main({logout}){
   h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}},
     h("div",null,
       h("h1",{style:{fontSize:15,fontWeight:900,background:"linear-gradient(90deg,#FFD700,#FF8C00)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",margin:0}},"🏷️ 中古販売CTRエンジン"),
-      h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · DALL-E 3 · "+VER)
+      h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · 実写保持AI広告 · "+VER)
     ),
     h("div",{style:{display:"flex",gap:5}},
       h("button",{onClick:()=>setScreen("api"),style:{padding:"5px 10px",borderRadius:7,background:hasApi?"rgba(74,222,128,.1)":"rgba(239,68,68,.12)",border:hasApi?"1px solid rgba(74,222,128,.28)":"1px solid rgba(239,68,68,.3)",color:hasApi?"#4ade80":"#f87171",fontSize:9,cursor:"pointer",fontWeight:700,whiteSpace:"nowrap"}},hasApi?"🔑 GPT-4o":"⚠️ API未設定"),
@@ -544,7 +568,7 @@ function Main({logout}){
 
     // まとめて解析ボタン
     images.length>0&&!imgLoading&&h("button",{onClick:runAnalyze,disabled:analyzing||!hasApi,style:PB(analyzing?"rgba(255,255,255,.06)":"linear-gradient(135deg,#60a5fa,#3b82f6)",analyzing?"rgba(255,255,255,.3)":"#fff",{marginTop:8,marginBottom:0,fontSize:12,padding:"10px"})},
-      analyzing?"🔍 OCR・傷解析中(まとめて実行)...":"🔍 "+(ocrData?"再解析(OCR・傷まとめて)":"OCR・傷をまとめて解析する")
+      analyzing?"🔍 OCR・傷解析中(まとめて実行)...":"STEP2 · "+(ocrData?"再解析(OCR・傷まとめて)":"OCR・傷をまとめて解析する")
     )
   ),
 
@@ -578,7 +602,7 @@ function Main({logout}){
 
   // Step3: 商品情報
   h("div",{style:G.card},
-    h("div",{style:G.ct},"Step 3 · 商品情報"),
+    h("div",{style:G.ct},"STEP 3 · 商品情報入力"),
 
     // スペック追加タグ(OCR候補 + 追加式)
     h("label",{style:G.lbl},"主要スペック(タップで追加・手入力も可)"),
@@ -624,39 +648,17 @@ function Main({logout}){
   // AI画像生成
   h("button",{onClick:runDalle,disabled:!canGo,
     style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)")},
-    genLoading?"生成中...":hasApi?"🤖 GPT-4o + DALL-E 3 で広告画像を生成":"🤖 AI生成(要API設定)"
+    genLoading?"生成中...":hasApi?"🎨 STEP5 DB情報から広告画像を生成":"🎨 AI生成(要API設定)"
   ),
 
   // 生成結果
   aiImgUrl&&!genLoading&&h("div",{style:{...G.card,textAlign:"center"}},
-    h("div",{style:G.ct},"🤖 AI生成 完了"),
+    h("div",{style:G.ct},"🎨 STEP5 AI広告生成 完了"),
     h("img",{src:aiImgUrl,style:{width:"100%",borderRadius:9,marginBottom:11,boxShadow:"0 6px 26px rgba(0,0,0,.5)"}}),
     h("button",{onClick:()=>window.open(aiImgUrl,"_blank"),style:{padding:"11px 22px",borderRadius:8,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",color:"#fff",fontWeight:900,fontSize:13,cursor:"pointer"}},"⬇️ 画像を開く(長押しで保存)")
   ),
 
-  // 説明文生成(メルカリのみ・1択)
-  h("div",{style:G.card},
-    h("div",{style:G.ct},"📝 メルカリ商品説明 自動生成"),
-    h("div",{style:{fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:10,lineHeight:1.5}},"ファクトチェック付き・確認できた情報のみで生成します"),
-    descLoading&&h(Sp,{msg:"生成・ファクトチェック中..."}),
-    h("button",{onClick:runDesc,disabled:descLoading||!images.length||!hasApi,
-      style:PB(images.length&&hasApi&&!descLoading?"linear-gradient(135deg,#f59e0b,#ef4444)":"rgba(255,255,255,.05)",images.length&&hasApi&&!descLoading?"#fff":"rgba(255,255,255,.2)",{marginBottom:8,fontSize:13})},
-      descLoading?"生成中...":"✨ メルカリ用説明文を自動生成する"
-    ),
-    descResult&&!descLoading&&h("div",null,
-      h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
-        h("span",{style:{fontSize:9,color:"#4ade80",fontWeight:700}},"✅ ファクトチェック済"),
-        h("span",{style:{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700}},descResult.length+"文字")
-      ),
-      h("textarea",{value:descResult,onChange:e=>setDescResult(e.target.value),style:G.ta}),
-      h("button",{onClick:()=>{navigator.clipboard?.writeText(descResult).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});},
-        style:PB("rgba(255,255,255,.04)","rgba(255,255,255,.62)",{border:"1px solid rgba(255,255,255,.09)",marginTop:6,marginBottom:0,fontSize:12})},
-        copied?"✅ コピー完了！":"📋 コピーする"
-      )
-    )
-  ),
-
-  h("div",{style:{height:14}})
+    h("div",{style:{height:14}})
   ));
 }
 
