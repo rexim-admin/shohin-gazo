@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v2.2.5</title>
+<title>中古販売CTRエンジン v2.2.6</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,13 +19,13 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.5";
+const VER="v2.2.6";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
 const FE="'Montserrat','Noto Sans JP',sans-serif";
 const FJ="'Noto Sans JP',sans-serif";
-const {useState,useRef,useCallback}=React;
+const {useState,useRef,useCallback,useEffect}=React;
 const h=React.createElement;
 const load=()=>{try{return JSON.parse(localStorage.getItem(SK)||"{}");}catch{return{};}};
 const save=(o)=>{try{const c=load();localStorage.setItem(SK,JSON.stringify({...c,...o}));}catch{}};
@@ -83,6 +83,28 @@ JSONのみ返答:
   const text=await aiOAI(key,[{role:"user",content:[...imgParts,{type:"text",text:prompt}]}],1100);
   return parseJ(text);
 }
+// 型番から正式スペックを照合
+async function doModelLookup(model,brand,ocrData,key){
+  if(!model||model==="不明")return ocrData;
+  const prompt=`型番「${model}」(メーカー:${brand||"不明"})の正式スペックを照合してください。
+OCR解析結果(参考): ${JSON.stringify(ocrData)}
+【ルール】
+- 型番から確実に判明する情報を優先してください。
+- OCR結果が型番のスペックと矛盾する場合(例:型番は86LなのにOCRが25L)、型番のスペックを優先してください。
+- 存在しないスペック(例:冷蔵庫で25L、電子レンジで23Wなど)は出力しないでください。
+- 容量、年式、ドア数、色、カテゴリを重点的に確認してください。
+JSONのみ返答:
+{
+  "brand":"","model":"","capacity":"","year":"","wattage":"","dimensions":"","category":"","color":"","series":"",
+  "specTags":["容量: XX","年式: XXXX","型番: XXXX"],
+  "lookupSuccess":true
+}`;
+  try{
+    const text=await aiOAI(key,[{role:"user",content:prompt}],800);
+    const lookup=parseJ(text);
+    return {...ocrData,...lookup,confidence:{...ocrData.confidence,model:1.0}};
+  }catch{return ocrData;}
+}
 // メルカリ商品説明生成(ファクトチェック込み・1回のプロンプトで完結)
 async function doDesc(ocr,userInputs,b64,key){
   const facts=Object.entries({
@@ -92,7 +114,7 @@ async function doDesc(ocr,userInputs,b64,key){
   }).filter(([,v])=>v&&v!=="不明"&&v).map(([k,v])=>`${k}: ${v}`).join("\n");
   const userStr=Object.entries(userInputs).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join("\n");
   const prompt=`あなたは中古販売のプロです。以下の情報からメルカリ用商品説明文を生成し、同時にファクトチェックも行ってください。
-【確認済み情報(これ以外のスペック・機能・付属品の記述は絶対禁止)】
+【確認済み情報(型番照合済み・これ以外のスペック・機能・付属品の記述は絶対禁止)】
 ${facts||"(なし)"}
 【ユーザー入力情報】
 ${userStr||"(なし)"}
@@ -153,7 +175,6 @@ ONLY add:
 - natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
 Quality: professional Photoshop-level Japanese used goods ad.`;
 
-  // base64をBlobに変換
   const byteString=atob(b64);
   const ab=new ArrayBuffer(byteString.length);
   const ia=new Uint8Array(ab);
@@ -224,7 +245,7 @@ function OcrPanel({ocr,setOcr}){
   ];
   const conf=ocr.confidence||{};
   return h("div",{style:G.card},
-    h("div",{style:G.ct},"AI解析結果 (タップで編集)"),
+    h("div",{style:G.ct},ocr.lookupSuccess?"✅ 型番照合済みスペック (タップで編集)":"AI解析結果 (タップで編集)"),
     h("div",{style:{display:"flex",flexWrap:"wrap"}},
       fields.map(f=>
         h(OcrTag,{key:f.k,label:f.l,value:ocr[f.k],mono:f.mono,conf:conf[f.k],
@@ -236,7 +257,7 @@ function OcrPanel({ocr,setOcr}){
     ocr.suggestSubCat&&h("div",{style:{marginTop:5,fontSize:11,color:"#60a5fa"}},"💡 推奨: "+ocr.suggestSubCat)
   );
 }
-// スペック追加タグ入力(追加式・重複なし)
+// スペック追加タグ入力
 function SpecTags({value,onChange,suggestions}){
   const tags=value?value.split(" ").filter(t=>t.trim()):[];
   function addTag(t){
@@ -247,7 +268,7 @@ function SpecTags({value,onChange,suggestions}){
   function removeTag(i){onChange(tags.filter((_,j)=>j!==i).join(" "));}
   return h("div",null,
     suggestions&&suggestions.length>0&&h("div",{style:{marginBottom:6}},
-      h("div",{style:{fontSize:10,color:"#888",marginBottom:4}},"タップで追加(重複は無視されます)"),
+      h("div",{style:{fontSize:10,color:"#888",marginBottom:4}},"タップで追加"),
       h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
         suggestions.map((s,i)=>h("button",{key:i,
           onClick:()=>addTag(s),
@@ -303,21 +324,11 @@ function ApiPage({apiKey,onSave,back}){
     h("div",{style:G.card},
       h("div",{style:G.ct},"OpenAI API Key"),
       h("input",{type:"password",value:key,onChange:e=>setKey(e.target.value),style:{...G.inp,marginBottom:12},placeholder:"sk-proj-..."}),
-      !conn&&h("div",{style:{color:"#f87171",fontSize:10,marginBottom:12}},"⚠️ APIキーが設定されていません。AI機能を利用するには設定してください"),
+      !conn&&h("div",{style:{color:"#f87171",fontSize:10,marginBottom:12}},"⚠️ APIキーが設定されていません"),
       valid&&h("div",{style:{color:"#4ade80",fontSize:10,marginBottom:6}},"✅ 有効な形式"),
       h("div",{style:{display:"flex",gap:8}},
         h("button",{onClick:doSave,disabled:!valid,style:PB(valid?"linear-gradient(135deg,#60a5fa,#3b82f6)":"rgba(255,255,255,.06)",valid?"#fff":"rgba(255,255,255,.22)",{flex:2,marginBottom:0})},saved?"✅ 保存しました！":"💾 保存する"),
         conn&&h("button",{onClick:()=>{setKey("");onSave("");},style:PB("rgba(239,68,68,.1)","#f87171",{flex:1,marginBottom:0,border:"1px solid rgba(239,68,68,.22)"})},"🔌 切断")
-      ),
-      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:8,lineHeight:1.5}},"💡 ブラウザのlocalStorageに保存。料金はOpenAI利用分のみ(解析約2〜5円/回・DALL-E約10〜15円/回)")
-    ),
-    h("div",{style:G.card},
-      h("div",{style:G.ct},"APIキー取得方法"),
-      ["platform.openai.com にアクセス","アカウント作成 or ログイン","左メニュー「API Keys」を開く","「Create new secret key」をクリック","sk-proj-... のキーをコピーして上に貼り付け","クレジットカード登録で従量課金開始"].map((s,i)=>
-        h("div",{key:i,style:{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}},
-          h("div",{style:{background:"#FFD700",color:"#090912",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,flexShrink:0,marginTop:1}},i+1),
-          h("div",{style:{color:"rgba(255,255,255,.55)",fontSize:12,lineHeight:1.5}},s)
-        )
       )
     )
   );
@@ -369,6 +380,19 @@ function Main({logout}){
   const hasApi=apiKey&&apiKey.startsWith("sk-")&&apiKey.length>20;
   const catTree=CATS[catId];
   const isOther=subCat==="フリー入力"||subCat==="その他"||catId==="other";
+
+  // STEP2(OCR)からSTEP3(スペック)へのリアルタイム同期
+  useEffect(()=>{
+    if(ocrData){
+      const tags=ocrData.specTags||[];
+      const combined=[ocrData.capacity,ocrData.year,ocrData.model].filter(v=>v&&v!=="不明");
+      const newSpec=[...new Set([...combined,...tags])].join(" ");
+      setMainSpec(newSpec);
+      if(ocrData.suggestCatId&&CATS[ocrData.suggestCatId])setCatId(ocrData.suggestCatId);
+      if(ocrData.suggestSubCat)setSubCat(ocrData.suggestSubCat);
+    }
+  },[ocrData]);
+
   function handleApiSave(k){setApiKey(k);save({apiKey:k});}
   if(screen==="api")return h(ApiPage,{apiKey,onSave:handleApiSave,back:()=>setScreen("main")});
   async function handlePhotos(ev){
@@ -391,13 +415,16 @@ function Main({logout}){
     if(!hasApi){setError("解析にはOpenAI APIキーが必要です");return;}
     setAnalyzing(true);setError("");
     try{
+      setGenMsg("🔍 写真をAI解析中...");
       const ocr=await doAnalyze(images.map(i=>i.b64),apiKey);
-      setOcrData(ocr);
-      if(ocr.suggestCatId&&CATS[ocr.suggestCatId])setCatId(ocr.suggestCatId);
-      if(ocr.suggestSubCat)setSubCat(ocr.suggestSubCat);
-      if(!mainSpec&&ocr.capacity&&ocr.capacity!=="不明")setMainSpec(ocr.capacity);
+      if(ocr.model&&ocr.model!=="不明"){
+        setGenMsg("🔎 型番から正式スペック照合中...");
+        const lookup=await doModelLookup(ocr.model,ocr.brand,ocr,apiKey);
+        setOcrData(lookup);
+      }else{setOcrData(ocr);}
+      setDescResult("");
     }catch(e){setError("解析エラー: "+e.message);}
-    setAnalyzing(false);
+    setAnalyzing(false);setGenMsg("");
   }
   async function runDalle(){
     if(!images.length){setError("写真をアップロードしてください");return;}
@@ -460,7 +487,7 @@ function Main({logout}){
         analyzing?"解析中...":"🔍 写真をAI解析する"
       )
     ),
-    analyzing&&h(Sp,{msg:"OCR + 傷解析を同時実行中..."}),
+    (analyzing||genMsg)&&h(Sp,{msg:genMsg||"解析中..."}),
     h(OcrPanel,{ocr:ocrData,setOcr:d=>{setOcrData(d);setDescResult("");}}),
     h(ScratchPanel,{ocr:ocrData,onSelect:t=>{setScratchNote(t);setDescResult("");}}),
     h("div",{style:G.card},
@@ -485,8 +512,8 @@ function Main({logout}){
       )
     ),
     h("div",{style:G.card},
-      h("div",{style:G.ct},"Step 3 · 商品情報"),
-      h("label",{style:G.lbl},"主要スペック(タップで追加・手入力も可)"),
+      h("div",{style:G.ct},"Step 3 · 確定スペック確認"),
+      h("label",{style:G.lbl},"主要スペック(型番から自動同期・手入力も可)"),
       h(SpecTags,{
         value:mainSpec,
         onChange:v=>{setMainSpec(v);setDescResult("");},
@@ -507,7 +534,7 @@ function Main({logout}){
       ),
       h("label",{style:G.lbl},"付属品(任意)"),
       h("input",{placeholder:"例: 本体・取扱説明書・ホースセット付き",value:accessories,onChange:e=>{setAccessories(e.target.value);setDescResult("");},style:{...G.inp,marginBottom:9}}),
-      h("label",{style:G.lbl},"傷・状態の記述(画像解析から自動入力 or 手入力)"),
+      h("label",{style:G.lbl},"傷・状態の記述"),
       h("textarea",{placeholder:"例: 動作良好。外観にわずかなスレはありますが目立ちません。",value:scratchNote,onChange:e=>{setScratchNote(e.target.value);setDescResult("");},style:{...G.ta,minHeight:70,marginBottom:9}}),
       h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
         h("label",{style:{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:12,color:negotiable?"#fcd34d":"rgba(255,255,255,.32)"}},
