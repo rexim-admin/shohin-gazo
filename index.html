@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v2.2.6</title>
+<title>中古販売CTRエンジン v2.2.7</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.6";
+const VER="v2.2.7";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -134,24 +134,33 @@ ${userStr||"(なし)"}
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
 // DALL-E 3 生成 (images/edits API)
-const STYLE={
-  appliance:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. Product on right side with drop shadow and floor reflection. Left: large RED bold brand (top), MASSIVE NAVY BLUE capacity number with thick white outline stroke (biggest element), ORANGE-RED category name with white outline. Bottom-left dark red delivery banner. Bottom-right explosive red starburst if urgent. Style: professional Hardoff/Jimoty Japanese resale flyer.",
-  apple:"Apple minimalist: pure white background, product centered with soft shadow, generous whitespace, black typography, thin black bars top/bottom.",
-  dyson:"Dyson premium: pure black, purple radial glow behind product, floor reflection, gradient purple-to-white text.",
-  pc:"Tech dark: deep navy, blue-green radial glows, product right, gradient blue-green text left.",
-  ikea:"IKEA style: warm cream background, IKEA blue header bar, natural shadow, bold typography.",
-  small:"Simple warm yellow background, centered product, clean typography.",
-  other:"Clean dark professional background.",
+const PRESETS={
+  sale:{l:"🔥 激安チラシ",s:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. High CTR, bold RED/NAVY text, 'SALE' feel, discount store style. Moderate text amount, product is main focus."},
+  luxury:{l:"✨ 高級ミニマル",s:"Luxury minimalist furniture ad. Clean whitespace, calm beige/white/black tones, sophisticated typography, interior magazine style but realistic for Mercari. Minimal text."},
+  ikea:{l:"🛋 IKEAポップ",s:"Scandinavian IKEA style. Bright, cheerful, casual, modern. IKEA blue/yellow accents, natural shadows, realistic and stylish."},
+  apple:{l:"🍎 Apple風",s:"Apple-style ultra-minimalist. Pure white background, black typography, premium feel, extremely minimal text, iconic Apple ad aesthetic."},
+  gadget:{l:"⚡ ガジェット系",s:"Futuristic tech style. Deep navy/black background, stylish cyan/green glows, sleek typography, tech-focused but realistic."},
+  auto:{l:"🤖 AUTO",s:""}
 };
-async function doDalleGen(b64,catId,subCat,data,key){
+async function doDalleGen(b64,catId,subCat,data,key,mode){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
+  
+  let styleDesc=PRESETS[mode]?.s||"";
+  if(mode==="auto"){
+    if(catId==="appliance")styleDesc=PRESETS.sale.s;
+    else if(catId==="ikea")styleDesc=PRESETS.ikea.s;
+    else if(catId==="apple")styleDesc=PRESETS.apple.s;
+    else if(catId==="pc")styleDesc=PRESETS.gadget.s;
+    else styleDesc=PRESETS.luxury.s;
+  }
+
   const info=[data.brand,data.mainSpec,subCat,data.catchCopy,data.condition,data.delivery].filter(Boolean).join(", ");
   const dbText=data.dbText||"";
   const prompt=`Professional Japanese product advertisement, 1:1 square.
 INFO: ${info}
 DATABASE INFORMATION:
 ${dbText}
-STYLE (MANDATORY): ${STYLE[catId]||STYLE.other}
+STYLE (MANDATORY): ${styleDesc}
 RULES:
 - Keep the ORIGINAL product photo exactly unchanged.
 - Do NOT redraw the product.
@@ -163,12 +172,14 @@ RULES:
 - NOT illustration.
 - NOT CGI.
 - NOT 3D render.
+- Do NOT generate extra product photos.
+- Do NOT create collage layouts.
+- Use ONLY the original main product photo.
 - Model numbers are NOT capacity values.
 - Never infer capacity from model numbers.
 ONLY add:
-- Japanese advertisement text
-- burst background
-- glow effects
+- Japanese advertisement text (amount based on style)
+- background elements (burst, glow, or clean)
 - shadows
 - delivery banners
 - sale badges
@@ -370,6 +381,7 @@ function Main({logout}){
   const [catchCopy,setCatchCopy]=useState("");
   const [accessories,setAccessories]=useState("");
   const [scratchNote,setScratchNote]=useState("");
+  const [styleMode,setStyleMode]=useState("auto");
   const [genLoading,setGenLoading]=useState(false);
   const [genMsg,setGenMsg]=useState("");
   const [aiImgUrl,setAiImgUrl]=useState(null);
@@ -440,7 +452,7 @@ function Main({logout}){
       }
       const data={brand:ocrData?.brand,mainSpec,catchCopy,condition,delivery,urgent,dbText};
       setGenMsg("🎨 実写保持AI広告を生成中(20〜40秒)...");
-      const url=await doDalleGen(images[0].b64,catId,isOther?freeCat:subCat,data,apiKey);
+      const url=await doDalleGen(images[0].b64,catId,isOther?freeCat:subCat,data,apiKey,styleMode);
       setAiImgUrl(url);
     }catch(e){setError("AI生成: "+e.message);}
     setGenLoading(false);setGenMsg("");
@@ -564,10 +576,23 @@ function Main({logout}){
         )
       )
     ),
-    genLoading&&h(Sp,{msg:genMsg}),
-    h("button",{onClick:runDalle,disabled:!canGo,
-      style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)")},
-      genLoading?"生成中...":hasApi?"🎨 STEP5 DB情報から広告画像を生成":"🎨 STEP5 AI広告生成(要API設定)"
+    h("div",{style:G.card},
+      h("div",{style:G.ct},"STEP 5 · AI広告画像生成"),
+      h("label",{style:G.lbl},"デザイン雰囲気選択"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}},
+        Object.entries(PRESETS).map(([id,p])=>{
+          const act=styleMode===id;
+          return h("button",{key:id,onClick:()=>setStyleMode(id),
+            style:{padding:"8px 4px",borderRadius:9,border:act?"2px solid #10b981":"1px solid rgba(255,255,255,.07)",background:act?"rgba(16,185,129,.1)":"rgba(255,255,255,.022)",color:act?"#10b981":"rgba(255,255,255,.36)",cursor:"pointer",fontWeight:act?700:400,fontSize:10,textAlign:"center"}},
+            p.l
+          );
+        })
+      ),
+      genLoading&&h(Sp,{msg:genMsg}),
+      h("button",{onClick:runDalle,disabled:!canGo,
+        style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)",{marginBottom:0})},
+        genLoading?"生成中...":hasApi?"🎨 DB情報から広告画像を生成":"🎨 AI広告生成(要API設定)"
+      )
     ),
     aiImgUrl&&!genLoading&&h("div",{style:{...G.card,textAlign:"center"}},
       h("div",{style:G.ct},"🎨 STEP5 AI広告生成 完了"),
