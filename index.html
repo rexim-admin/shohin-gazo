@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v2.2.4</title>
+<title>中古販売CTRエンジン v2.2.5</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.4";
+const VER="v2.2.5";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -35,7 +35,7 @@ const G={
   ct:{fontSize:10,color:"#FFD700",fontWeight:700,marginBottom:8,letterSpacing:1.5,textTransform:"uppercase"},
   inp:{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.11)",background:"rgba(255,255,255,.054)",color:"#fff",fontSize:14,outline:"none",boxSizing:"border-box"},
   sel:{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.11)",background:"rgba(255,255,255,.054)",color:"#fff",fontSize:14,marginBottom:9,outline:"none"},
-  ta:{width:"100%",padding:"11px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.09)",background:"rgba(0,0,0,.3)",color:"#ddd",fontSize:13,outline:"none",boxSizing:"box-sizing",resize:"vertical",lineHeight:1.8,minHeight:200},
+  ta:{width:"100%",padding:"11px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.09)",background:"rgba(0,0,0,.3)",color:"#ddd",fontSize:13,outline:"none",boxSizing:"border-box",resize:"vertical",lineHeight:1.8,minHeight:200},
   err:{background:"rgba(220,38,38,.09)",border:"1px solid rgba(220,38,38,.3)",borderRadius:8,padding:"9px 13px",marginBottom:10,color:"#fca5a5",fontSize:12},
   lbl:{display:"block",fontSize:11,color:"#666",marginBottom:3},
 };
@@ -111,9 +111,9 @@ ${userStr||"(なし)"}
 - 説明文本文のみを出力する(注釈・補足・見出し不要)`;
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
-// DALL-E 3 生成
+// DALL-E 3 生成 (images/edits API)
 const STYLE={
-  appliance:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. Product cleanly placed on right side with drop shadow and floor reflection. Left: large RED bold brand (top), MASSIVE NAVY BLUE capacity number with thick white outline stroke (biggest element), ORANGE-RED category name with white outline. Bottom-left dark red delivery banner. Bottom-right explosive red starburst if urgent. Style: professional Hardoff/Jimoty Japanese resale flyer.",
+  appliance:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. Product on right side with drop shadow and floor reflection. Left: large RED bold brand (top), MASSIVE NAVY BLUE capacity number with thick white outline stroke (biggest element), ORANGE-RED category name with white outline. Bottom-left dark red delivery banner. Bottom-right explosive red starburst if urgent. Style: professional Hardoff/Jimoty Japanese resale flyer.",
   apple:"Apple minimalist: pure white background, product centered with soft shadow, generous whitespace, black typography, thin black bars top/bottom.",
   dyson:"Dyson premium: pure black, purple radial glow behind product, floor reflection, gradient purple-to-white text.",
   pc:"Tech dark: deep navy, blue-green radial glows, product right, gradient blue-green text left.",
@@ -123,26 +123,24 @@ const STYLE={
 };
 async function doDalleGen(b64,catId,subCat,data,key){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
-  const desc=await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:"Describe ONLY what is clearly visible: product type, exact color, shape, any visible text/labels. 2 sentences, English only, no speculation."}]}],200);
   const info=[data.brand,data.mainSpec,subCat,data.catchCopy,data.condition,data.delivery].filter(Boolean).join(", ");
   const dbText=data.dbText||"";
   const prompt=`Professional Japanese product advertisement, 1:1 square.
-PRODUCT: ${desc.trim()}
 INFO: ${info}
 DATABASE INFORMATION:
 ${dbText}
 STYLE (MANDATORY): ${STYLE[catId]||STYLE.other}
 RULES:
-- Keep the exact original appliance photo unchanged.
-- DO NOT redraw the appliance.
-- DO NOT recreate the appliance.
-- Use the original product photo directly.
-- Preserve all real details, labels, scratches, buttons, reflections and proportions.
-- Photorealistic.
-- Real product photo appearance.
+- Keep the ORIGINAL product photo exactly unchanged.
+- Do NOT redraw the product.
+- Do NOT recreate the product.
+- Do NOT change the product shape.
+- Preserve all scratches, labels, reflections, proportions and details.
+- ONLY add advertisement design elements around the product.
+- Photorealistic Japanese recycle-shop advertisement.
 - NOT illustration.
+- NOT CGI.
 - NOT 3D render.
-- NOT vector art.
 - Model numbers are NOT capacity values.
 - Never infer capacity from model numbers.
 ONLY add:
@@ -154,9 +152,24 @@ ONLY add:
 - sale badges
 - natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
 Quality: professional Photoshop-level Japanese used goods ad.`;
-  const r=await fetch("https://api.openai.com/v1/images/generations",{
-    method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
-    body:JSON.stringify({model:"gpt-image-1",prompt:prompt.substring(0,3900),size:"1024x1024"})
+
+  // base64をBlobに変換
+  const byteString=atob(b64);
+  const ab=new ArrayBuffer(byteString.length);
+  const ia=new Uint8Array(ab);
+  for(let i=0;i<byteString.length;i++)ia[i]=byteString.charCodeAt(i);
+  const blob=new Blob([ab],{type:"image/png"});
+
+  const fd=new FormData();
+  fd.append("image",blob,"image.png");
+  fd.append("prompt",prompt.substring(0,3900));
+  fd.append("model","gpt-image-1");
+  fd.append("n",1);
+  fd.append("size","1024x1024");
+
+  const r=await fetch("https://api.openai.com/v1/images/edits",{
+    method:"POST",headers:{"Authorization":"Bearer "+key},
+    body:fd
   });
   const d=await r.json();if(d.error)throw new Error(d.error.message);
   if(d.data?.[0]?.url)return d.data[0].url;
@@ -174,7 +187,7 @@ function imgToB64(file,maxSize=900){
         const c=document.createElement("canvas");
         c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);
         c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-        res({b64:c.toDataURL("image/jpeg",.88).split(",")[1],src:e.target.result,w:c.width,h:c.height});
+        res({b64:c.toDataURL("image/png").split(",")[1],src:e.target.result,w:c.width,h:c.height});
       };
       img.onerror=rej;img.src=e.target.result;
     };
@@ -448,27 +461,27 @@ function Main({logout}){
       )
     ),
     analyzing&&h(Sp,{msg:"OCR + 傷解析を同時実行中..."}),
-    h(OcrPanel,{ocr:ocrData,setOcr:setOcrData}),
-    h(ScratchPanel,{ocr:ocrData,onSelect:t=>{setScratchNote(t);}}),
+    h(OcrPanel,{ocr:ocrData,setOcr:d=>{setOcrData(d);setDescResult("");}}),
+    h(ScratchPanel,{ocr:ocrData,onSelect:t=>{setScratchNote(t);setDescResult("");}}),
     h("div",{style:G.card},
       h("div",{style:G.ct},"Step 2 · カテゴリ"),
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:10}},
         Object.entries(CATS).map(([id,cat])=>{
           const act=catId===id;
-          return h("button",{key:id,onClick:()=>{setCatId(id);setSubCat("");setFreeCat("");},
+          return h("button",{key:id,onClick:()=>{setCatId(id);setSubCat("");setFreeCat("");setDescResult("");},
             style:{padding:"8px 4px",borderRadius:9,border:act?`2px solid ${cat.c}`:"1px solid rgba(255,255,255,.07)",background:act?"rgba(255,255,255,.06)":"rgba(255,255,255,.022)",color:act?cat.c:"rgba(255,255,255,.36)",cursor:"pointer",fontWeight:act?700:400,fontSize:11,textAlign:"center"}},
             cat.l
           );
         })
       ),
       h("label",{style:G.lbl},"サブカテゴリ"),
-      h("select",{value:subCat,onChange:e=>setSubCat(e.target.value),style:G.sel},
+      h("select",{value:subCat,onChange:e=>{setSubCat(e.target.value);setDescResult("");},style:G.sel},
         h("option",{value:""},"── 選択してください ──"),
         catTree.subs.map(s=>h("option",{key:s,value:s},s))
       ),
       isOther&&h("div",null,
         h("label",{style:G.lbl},"フリー入力(詳細カテゴリ)"),
-        h("input",{placeholder:"例: スマートウォッチ・ゲーム機・ドライヤー など",value:freeCat,onChange:e=>setFreeCat(e.target.value),style:{...G.inp,marginBottom:0}})
+        h("input",{placeholder:"例: スマートウォッチ・ゲーム機・ドライヤー など",value:freeCat,onChange:e=>{setFreeCat(e.target.value);setDescResult("");},style:{...G.inp,marginBottom:0}})
       )
     ),
     h("div",{style:G.card},
@@ -476,31 +489,31 @@ function Main({logout}){
       h("label",{style:G.lbl},"主要スペック(タップで追加・手入力も可)"),
       h(SpecTags,{
         value:mainSpec,
-        onChange:setMainSpec,
+        onChange:v=>{setMainSpec(v);setDescResult("");},
         suggestions:ocrData?.specTags||[],
       }),
       h("div",{style:{marginBottom:9}}),
       h("label",{style:G.lbl},"キャッチコピー(任意)"),
-      h("input",{placeholder:"例: 一人暮らしにぴったり！",value:catchCopy,onChange:e=>setCatchCopy(e.target.value),style:{...G.inp,marginBottom:9}}),
+      h("input",{placeholder:"例: 一人暮らしにぴったり！",value:catchCopy,onChange:e=>{setCatchCopy(e.target.value);setDescResult("");},style:{...G.inp,marginBottom:9}}),
       h("label",{style:G.lbl},"商品の状態"),
-      h("select",{value:condition,onChange:e=>setCondition(e.target.value),style:G.sel},
+      h("select",{value:condition,onChange:e=>{setCondition(e.target.value);setDescResult("");},style:G.sel},
         h("option",{value:""},"── 選択してください ──"),
         ["美品","動作確認済み","良品","やや使用感あり","ジャンク・現状渡し"].map(o=>h("option",{key:o,value:o},o))
       ),
       h("label",{style:G.lbl},"配送・受け渡し"),
-      h("select",{value:delivery,onChange:e=>setDelivery(e.target.value),style:G.sel},
+      h("select",{value:delivery,onChange:e=>{setDelivery(e.target.value);setDescResult("");},style:G.sel},
         h("option",{value:""},"── 選択してください ──"),
         ["配達可(要相談)","配達可(無料)","自己搬出のみ","発送対応可","引き取り限定","近隣エリア配達対応"].map(o=>h("option",{key:o,value:o},o))
       ),
       h("label",{style:G.lbl},"付属品(任意)"),
-      h("input",{placeholder:"例: 本体・取扱説明書・ホースセット付き",value:accessories,onChange:e=>setAccessories(e.target.value),style:{...G.inp,marginBottom:9}}),
+      h("input",{placeholder:"例: 本体・取扱説明書・ホースセット付き",value:accessories,onChange:e=>{setAccessories(e.target.value);setDescResult("");},style:{...G.inp,marginBottom:9}}),
       h("label",{style:G.lbl},"傷・状態の記述(画像解析から自動入力 or 手入力)"),
-      h("textarea",{placeholder:"例: 動作良好。外観にわずかなスレはありますが目立ちません。",value:scratchNote,onChange:e=>setScratchNote(e.target.value),style:{...G.ta,minHeight:70,marginBottom:9}}),
+      h("textarea",{placeholder:"例: 動作良好。外観にわずかなスレはありますが目立ちません。",value:scratchNote,onChange:e=>{setScratchNote(e.target.value);setDescResult("");},style:{...G.ta,minHeight:70,marginBottom:9}}),
       h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
         h("label",{style:{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:12,color:negotiable?"#fcd34d":"rgba(255,255,255,.32)"}},
-          h("input",{type:"checkbox",checked:negotiable,onChange:e=>setNegotiable(e.target.checked),style:{accentColor:"#fcd34d",width:14,height:14}}),"💬 値下げ応相談"),
+          h("input",{type:"checkbox",checked:negotiable,onChange:e=>{setNegotiable(e.target.checked);setDescResult("");},style:{accentColor:"#fcd34d",width:14,height:14}}),"💬 値下げ応相談"),
         h("label",{style:{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:12,color:urgent?"#f87171":"rgba(255,255,255,.32)"}},
-          h("input",{type:"checkbox",checked:urgent,onChange:e=>setUrgent(e.target.checked),style:{accentColor:"#f87171",width:14,height:14}}),"🔥 即売希望(激安バッジ)")
+          h("input",{type:"checkbox",checked:urgent,onChange:e=>{setUrgent(e.target.checked);setDescResult("");},style:{accentColor:"#f87171",width:14,height:14}}),"🔥 即売希望(激安バッジ)")
       )
     ),
     h(Err,{msg:error}),
