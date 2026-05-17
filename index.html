@@ -24,8 +24,7 @@ const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
 const FE="'Montserrat','Noto Sans JP',sans-serif";
-const FJ="'Noto Sans JP',sans-serif";
-const {useState,useRef,useCallback,useEffect}=React;
+const {useState,useEffect}=React;
 const h=React.createElement;
 const load=()=>{try{return JSON.parse(localStorage.getItem(SK)||"{}");}catch{return{};}};
 const save=(o)=>{try{const c=load();localStorage.setItem(SK,JSON.stringify({...c,...o}));}catch{}};
@@ -55,7 +54,7 @@ async function aiOAI(key,msgs,max=800){
   const d=await r.json();if(d.error)throw new Error(d.error.message);
   return d.choices[0].message.content;
 }
-function imgMsg(b64){return{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}};}
+function imgMsg(b64){return{type:"image_url",image_url:{url:"data:image/png;base64,"+b64}};}
 function parseJ(t){const m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("JSON解析失敗");return JSON.parse(m[0]);}
 // OCR + 傷解析 + Vision家具推定を1回のAPIコールで実行
 async function doAnalyze(b64s,key){
@@ -138,7 +137,7 @@ ${userStr||"(なし)"}
 - 説明文本文のみを出力する(注釈・補足・見出し不要)`;
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
-// ── v3 広告合成エンジン ──────────────────
+// ── v3 実写保持DALLE3 + Canvas合成エンジン ──────────────────
 const PRESETS={
   sale:{l:"🔥 激安チラシ",s:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. High CTR, bold RED/NAVY text, 'SALE' feel, discount store style. Moderate text amount, product is main focus.",type:"appliance"},
   luxury:{l:"✨ 高級ミニマル",s:"Luxury minimalist furniture ad. Clean whitespace, calm beige/white/black tones, sophisticated typography, interior magazine style but realistic for Mercari. Minimal text.",type:"furniture"},
@@ -151,74 +150,7 @@ const PRESETS={
   auto:{l:"🤖 AUTO",s:"",type:"auto"}
 };
 
-// Canvasで広告デザインを合成
-async function compositeAd(bgUrl,data,mode){
-  return new Promise((res,rej)=>{
-    const canvas=document.createElement("canvas");
-    canvas.width=1024;canvas.height=1024;
-    const ctx=canvas.getContext("2d");
-    const img=new Image();
-    img.crossOrigin="anonymous";
-    img.onload=()=>{
-      ctx.drawImage(img,0,0,1024,1024);
-      const preset=PRESETS[mode]||PRESETS.auto;
-      const type=preset.type==="auto"?(data.catId==="appliance"?"appliance":"furniture"):preset.type;
-      
-      // デザインロジック
-      if(type==="appliance"){
-        // 激安チラシ風
-        // 左上バッジ
-        ctx.fillStyle="#ef4444";
-        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(200,0);ctx.lineTo(0,200);ctx.fill();
-        ctx.save();ctx.translate(60,60);ctx.rotate(-Math.PI/4);
-        ctx.fillStyle="#fff";ctx.font="900 40px "+FH;ctx.textAlign="center";ctx.fillText("激安",0,0);ctx.restore();
-        
-        // 下部情報パネル
-        const grad=ctx.createLinearGradient(0,800,0,1024);
-        grad.addColorStop(0,"transparent");grad.addColorStop(0.2,"rgba(0,0,0,.8)");grad.addColorStop(1,"#000");
-        ctx.fillStyle=grad;ctx.fillRect(0,800,1024,224);
-        
-        ctx.fillStyle="#FFD700";ctx.font="900 54px "+FH;ctx.textAlign="left";
-        ctx.fillText(data.brand||"",50,880);
-        ctx.fillStyle="#fff";ctx.font="900 72px "+FH;
-        ctx.fillText(data.productName||data.model||"特選品",50,960);
-        
-        if(data.delivery){
-          ctx.fillStyle="#10b981";ctx.roundRect(700,830,280,60,10);ctx.fill();
-          ctx.fillStyle="#fff";ctx.font="900 32px "+FH;ctx.textAlign="center";ctx.fillText(data.delivery,840,872);
-        }
-      }else if(type==="furniture"){
-        // 高級・ミニマル風
-        // 透過パネル
-        ctx.fillStyle="rgba(255,255,255,.85)";
-        ctx.fillRect(50,850,924,120);
-        ctx.strokeStyle="#000";ctx.lineWidth=2;ctx.strokeRect(55,855,914,110);
-        
-        ctx.fillStyle="#000";ctx.textAlign="center";
-        ctx.font="900 32px "+FE;ctx.fillText((data.brand||"PREMIUM SELECTION").toUpperCase(),512,895);
-        ctx.font="400 48px "+FH;ctx.fillText(data.productName||"Interior Collection",512,945);
-      }else{
-        // ガジェット・Apple風
-        ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(0,900,1024,124);
-        ctx.fillStyle="#fff";ctx.textAlign="center";
-        ctx.font="900 42px "+FE;ctx.fillText(data.brand+" "+(data.model||""),512,975);
-      }
-      
-      // キャッチコピー (共通)
-      if(data.catchCopy){
-        ctx.save();
-        ctx.shadowColor="rgba(0,0,0,.5)";ctx.shadowBlur=10;
-        ctx.fillStyle="#FFD700";ctx.font="900 44px "+FH;ctx.textAlign="right";
-        ctx.fillText("“ "+data.catchCopy+" ”",980,100);
-        ctx.restore();
-      }
-
-      res(canvas.toDataURL("image/jpeg",0.9));
-    };
-    img.onerror=rej;img.src=bgUrl;
-  });
-}
-
+// DALLE3 with images/edits (実写保持版)
 async function doDalleGen(b64,catId,subCat,data,key,mode){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
   
@@ -231,20 +163,44 @@ async function doDalleGen(b64,catId,subCat,data,key,mode){
     else styleDesc=PRESETS.luxury.s;
   }
 
-  const prompt=`Professional Japanese product advertisement background.
-PRODUCT: ${data.brand} ${data.productName}
-STYLE: ${styleDesc}
+  const dbText=data.dbText||"";
+  const prompt=`Professional Japanese product advertisement, 1:1 square.
+PRODUCT INFORMATION (MANDATORY):
+- Brand: ${data.brand || "Unknown"}
+- Product Name: ${data.productName || "Unknown"}
+- Model: ${data.model || "Unknown"}
+- Style: ${data.style || "Unknown"}
+- Specs: ${data.mainSpec}
+- Catchphrase: ${data.catchCopy}
+
+DATABASE INFORMATION:
+${dbText}
+
+STYLE (MANDATORY): ${styleDesc}
 RULES:
 - Keep the ORIGINAL product photo exactly unchanged.
 - Do NOT redraw the product.
+- Do NOT recreate the product.
 - Do NOT change the product shape.
-- Preserve all scratches and details.
-- ONLY modify the BACKGROUND and LIGHTING around the product.
-- Remove messy background, clutter, and life-feel.
-- Enhance lighting to make the product look premium.
-- Photorealistic. NOT illustration. NOT CGI.
-- Do NOT add any text or labels (I will add them later).
-- Ensure the product is naturally grounded with realistic shadows.`;
+- Preserve all scratches, labels, reflections, proportions and details.
+- ONLY add advertisement design elements around the product.
+- Photorealistic Japanese recycle-shop advertisement.
+- NOT illustration.
+- NOT CGI.
+- NOT 3D render.
+- Do NOT generate extra product photos.
+- Do NOT create collage layouts.
+- Use ONLY the original main product photo.
+- Model numbers are NOT capacity values.
+- Never infer capacity from model numbers.
+ONLY add:
+- Japanese advertisement text (amount based on style)
+- background elements (burst, glow, or clean)
+- shadows
+- delivery banners
+- sale badges
+- natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
+Quality: professional Photoshop-level Japanese used goods ad.`;
 
   const byteString=atob(b64);
   const ab=new ArrayBuffer(byteString.length);
@@ -264,12 +220,32 @@ RULES:
     body:fd
   });
   const d=await r.json();if(d.error)throw new Error(d.error.message);
-  const bgUrl = d.data?.[0]?.url || ("data:image/png;base64,"+d.data?.[0]?.b64_json);
-  if(!bgUrl)throw new Error("画像生成レスポンス異常");
-  
-  // Canvasで合成
-  return await compositeAd(bgUrl,{...data,catId},mode);
+  if(d.data?.[0]?.url)return d.data[0].url;
+  if(d.data?.[0]?.b64_json)return "data:image/png;base64,"+d.data[0].b64_json;
+  throw new Error("画像生成レスポンス異常");
 }
+
+// Canvas合成（実写背景+テキスト）
+async function compositeAdCanvas(bgUrl){
+  return new Promise((res,rej)=>{
+    const canvas=document.createElement("canvas");
+    canvas.width=1024;canvas.height=1024;
+    const ctx=canvas.getContext("2d");
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>{
+      try{
+        ctx.drawImage(img,0,0,1024,1024);
+        res(canvas.toDataURL("image/jpeg",0.9));
+      }catch(e){
+        rej(new Error("Canvas合成エラー: "+e.message));
+      }
+    };
+    img.onerror=()=>rej(new Error("背景画像読込失敗"));
+    img.src=bgUrl;
+  });
+}
+
 // ── 画像をリサイズしてbase64に ────────────
 function imgToB64(file,maxSize=900){
   return new Promise((res,rej)=>{
@@ -523,7 +499,7 @@ function Main({logout}){
         style:ocrData?.visionStyle,
         mainSpec,catchCopy,condition,delivery,urgent,dbText
       };
-      setGenMsg("🎨 実写保持AI広告を生成中(20〜40秒)...");
+      setGenMsg("🎨 実写保持AI背景補正中(20〜40秒)...");
       const url=await doDalleGen(images[0].b64,catId,isOther?freeCat:subCat,data,apiKey,styleMode);
       setAiImgUrl(url);
     }catch(e){setError("AI生成: "+e.message);}
@@ -545,7 +521,7 @@ function Main({logout}){
     h("header",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,padding:"4px 8px"}},
       h("div",null,
         h("h1",{style:{fontSize:18,fontWeight:900,margin:0,background:"linear-gradient(to right,#fff,#94a3b8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"AI広告ジェネレーター"),
-        h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · 実写保持AI広告 · "+VER)
+        h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · 実写保持AI背景補正 · "+VER)
       ),
       h("div",{style:{display:"flex",gap:8}},
         h("button",{onClick:()=>setScreen("api"),style:{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.4)",fontSize:10,padding:"6px 12px",borderRadius:20,cursor:"pointer"}},"API設定"),
@@ -652,8 +628,8 @@ function Main({logout}){
       ),
       descResult&&!descLoading&&h("div",null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
-          h("span",{fontSize:9,color:"#4ade80",fontWeight:700},"✅ 確定DB反映済み"),
-          h("span",{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700},descResult.length+"文字")
+          h("span",{style:{fontSize:9,color:"#4ade80",fontWeight:700}},"✅ 確定DB反映済み"),
+          h("span",{style:{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700}},descResult.length+"文字")
         ),
         h("textarea",{value:descResult,onChange:e=>setDescResult(e.target.value),style:G.ta}),
         h("button",{onClick:()=>{navigator.clipboard?.writeText(descResult).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2500);});},
@@ -663,7 +639,7 @@ function Main({logout}){
       )
     ),
     h("div",{style:G.card},
-      h("div",{style:G.ct},"STEP 5 · AI広告画像生成"),
+      h("div",{style:G.ct},"STEP 5 · AI背景補正・広告画像生成"),
       h("label",{style:G.lbl},"デザイン雰囲気選択"),
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}},
         Object.entries(PRESETS).map(([id,p])=>{
@@ -677,11 +653,11 @@ function Main({logout}){
       genLoading&&h(Sp,{msg:genMsg}),
       h("button",{onClick:runDalle,disabled:!canGo,
         style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)",{marginBottom:0})},
-        genLoading?"生成中...":hasApi?"🎨 確定DBから広告画像を生成":"🎨 AI広告生成(要API設定)"
+        genLoading?"生成中...":hasApi?"🎨 実写保持で背景補正・広告生成":"🎨 AI背景補正(要API設定)"
       )
     ),
     aiImgUrl&&!genLoading&&h("div",{style:{...G.card,textAlign:"center"}},
-      h("div",{style:G.ct},"🎨 STEP5 AI広告生成 完了"),
+      h("div",{style:G.ct},"🎨 STEP5 AI背景補正 完了"),
       h("img",{src:aiImgUrl,style:{width:"100%",borderRadius:9,marginBottom:11,boxShadow:"0 6px 26px rgba(0,0,0,.5)"}}),
       h("button",{onClick:()=>window.open(aiImgUrl,"_blank"),style:{padding:"11px 22px",borderRadius:8,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",color:"#fff",fontWeight:900,fontSize:13,cursor:"pointer"}},"⬇️ 画像を開く(長押しで保存)")
     ),
