@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v3.0.0</title>
+<title>中古販売CTRエンジン v3.1.0</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v3.0.0";
+const VER="v3.1.0";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -137,70 +137,60 @@ ${userStr||"(なし)"}
 - 説明文本文のみを出力する(注釈・補足・見出し不要)`;
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
-// ── v3 実写保持DALLE3 + Canvas合成エンジン ──────────────────
+// ── v3.1.0 高級スタジオ補正エンジン ──────────────────
 const PRESETS={
-  sale:{l:"🔥 激安チラシ",s:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. High CTR, bold RED/NAVY text, 'SALE' feel, discount store style. Moderate text amount, product is main focus.",type:"appliance"},
-  luxury:{l:"✨ 高級ミニマル",s:"Luxury minimalist furniture ad. Clean whitespace, calm beige/white/black tones, sophisticated typography, interior magazine style but realistic for Mercari. Minimal text.",type:"furniture"},
-  ikea:{l:"🛋 IKEAポップ",s:"Scandinavian IKEA style. Bright, cheerful, casual, modern. IKEA blue/yellow accents, natural shadows, realistic and stylish.",type:"furniture"},
-  apple:{l:"🍎 Apple風",s:"Apple-style ultra-minimalist. Pure white background, black typography, premium feel, extremely minimal text, iconic Apple ad aesthetic.",type:"gadget"},
-  gadget:{l:"⚡ ガジェット系",s:"Futuristic tech style. Deep navy/black background, stylish cyan/green glows, sleek typography, tech-focused but realistic.",type:"gadget"},
-  hotel:{l:"🏨 高級ホテル風",s:"High-end hotel room background. Warm lighting, elegant atmosphere, premium furniture setting. Realistic and sophisticated.",type:"furniture"},
-  studio:{l:"📸 スタジオ風",s:"Professional photo studio background. Clean, neutral grey/white, soft shadows, high-end product photography look.",type:"appliance"},
-  cafe:{l:"☕ カフェ風",s:"Stylish cafe interior background. Natural wood, warm lighting, cozy atmosphere, lifestyle setting.",type:"furniture"},
-  auto:{l:"🤖 AUTO",s:"",type:"auto"}
+  auto:   {l:"🤖 AUTO",          bg:"clean studio",       light:"soft diffused",   floor:"subtle shadow on white floor"},
+  minimal:{l:"✨ 高級ミニマル",  bg:"pure white seamless cyclorama studio",bg2:"warm white",light:"soft overhead diffused light, gentle fill from left", floor:"very subtle natural drop shadow"},
+  apple:  {l:"🍎 Apple風",       bg:"pure white background, infinite white floor, Apple product photography",light:"ultra-soft overhead light, no harsh shadows",floor:"barely visible soft shadow directly beneath product"},
+  muji:   {l:"🌿 無印良品風",    bg:"warm off-white background, very light natural linen texture on floor",light:"warm soft window light from upper left",floor:"subtle warm shadow on off-white floor"},
+  nordic: {l:"🪵 北欧モダン",    bg:"light Scandinavian interior, white painted wall, light oak herringbone floor, very subtle",light:"natural daylight from left window, soft and diffused",floor:"natural wood floor with soft shadow"},
+  hotel:  {l:"🏨 高級ホテル風",  bg:"high-end hotel suite interior, warm beige wall, plush carpet or marble floor, very subtle and clean",light:"warm soft ambient lighting, multiple gentle sources",floor:"polished floor with gentle reflection"},
+  studio: {l:"📸 スタジオ",      bg:"professional photography studio, neutral mid-grey seamless paper background",light:"professional softbox lighting, balanced, no hotspots",floor:"grey seamless paper floor, soft natural shadow"},
+  outdoor:{l:"🌤 ナチュラル屋外",bg:"clean modern outdoor space, neutral concrete wall, natural daylight",light:"soft overcast natural daylight, no harsh shadows",floor:"smooth concrete floor with soft shadow"},
 };
 
-// DALLE3 with images/edits (実写保持版)
+// DALLE3 with images/edits (v3.1.0 高級スタジオ補正版)
 async function doDalleGen(b64,catId,subCat,data,key,mode){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
-  
-  let styleDesc=PRESETS[mode]?.s||"";
+
+  // AUTOはカテゴリで判定
+  let resolvedMode=mode;
   if(mode==="auto"){
-    if(catId==="appliance")styleDesc=PRESETS.sale.s;
-    else if(catId==="ikea")styleDesc=PRESETS.ikea.s;
-    else if(catId==="apple")styleDesc=PRESETS.apple.s;
-    else if(catId==="pc")styleDesc=PRESETS.gadget.s;
-    else styleDesc=PRESETS.luxury.s;
+    if(catId==="apple")resolvedMode="apple";
+    else if(catId==="ikea"||catId==="other")resolvedMode="nordic";
+    else if(catId==="pc")resolvedMode="studio";
+    else resolvedMode="minimal";
   }
+  const preset=PRESETS[resolvedMode]||PRESETS.minimal;
 
-  const dbText=data.dbText||"";
-  const prompt=`Professional Japanese product advertisement, 1:1 square.
-PRODUCT INFORMATION (MANDATORY):
-- Brand: ${data.brand || "Unknown"}
-- Product Name: ${data.productName || "Unknown"}
-- Model: ${data.model || "Unknown"}
-- Style: ${data.style || "Unknown"}
-- Specs: ${data.mainSpec}
-- Catchphrase: ${data.catchCopy}
+  const brand=data.brand||"";
+  const productName=data.productName||"";
 
-DATABASE INFORMATION:
-${dbText}
+  // v3.1.0 コアプロンプト：「スタジオ補正」特化、広告禁止
+  const prompt=`You are a professional product retouching studio AI. Your ONLY job is to replace the messy background with a clean studio environment while keeping the product 100% identical.
 
-STYLE (MANDATORY): ${styleDesc}
-RULES:
-- Keep the ORIGINAL product photo exactly unchanged.
-- Do NOT redraw the product.
-- Do NOT recreate the product.
-- Do NOT change the product shape.
-- Preserve all scratches, labels, reflections, proportions and details.
-- ONLY add advertisement design elements around the product.
-- Photorealistic Japanese recycle-shop advertisement.
-- NOT illustration.
-- NOT CGI.
-- NOT 3D render.
-- Do NOT generate extra product photos.
-- Do NOT create collage layouts.
-- Use ONLY the original main product photo.
-- Model numbers are NOT capacity values.
-- Never infer capacity from model numbers.
-ONLY add:
-- Japanese advertisement text (amount based on style)
-- background elements (burst, glow, or clean)
-- shadows
-- delivery banners
-- sale badges
-- natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
-Quality: professional Photoshop-level Japanese used goods ad.`;
+BACKGROUND ENVIRONMENT:
+${preset.bg}
+
+LIGHTING:
+${preset.light}
+
+FLOOR / SURFACE:
+${preset.floor}
+
+ABSOLUTE RULES - READ CAREFULLY:
+1. The product itself MUST remain pixel-perfect identical. Do NOT change: shape, color, texture, scratches, dents, logos, labels, stickers, door count, button layout, proportion, or any surface detail.
+2. Do NOT redraw or regenerate the product. Only replace what is BEHIND and AROUND the product.
+3. Remove ALL background clutter: messy rooms, cardboard boxes, cords, furniture, walls with marks, life clutter.
+4. Add ONLY: clean background, natural floor surface, realistic soft shadow beneath the product.
+5. The shadow must be a natural contact shadow - not floating, not dramatic. Product must look grounded.
+6. Lighting should be realistic and soft - like a professional photographer used a large softbox. No neon glows, no dramatic spotlights, no artificial color casts.
+7. ZERO text in the image. No Japanese characters, no English letters, no numbers, no labels, no overlays.
+8. NOT an advertisement. NOT a flyer. NOT CGI. NOT illustration.
+9. This is professional retouch photography for a high-end Japanese resale marketplace.
+10. The result must look like a human retoucher spent 30 minutes in Photoshop cleaning the background.
+
+OUTPUT: A single clean product photo with neutral studio background. Photorealistic. No text. No badges. No graphic design elements.`;
 
   const byteString=atob(b64);
   const ab=new ArrayBuffer(byteString.length);
@@ -499,7 +489,7 @@ function Main({logout}){
         style:ocrData?.visionStyle,
         mainSpec,catchCopy,condition,delivery,urgent,dbText
       };
-      setGenMsg("🎨 実写保持AI背景補正中(20〜40秒)...");
+      setGenMsg("📸 スタジオ背景補正中(20〜40秒)...");
       const url=await doDalleGen(images[0].b64,catId,isOther?freeCat:subCat,data,apiKey,styleMode);
       setAiImgUrl(url);
     }catch(e){setError("AI生成: "+e.message);}
@@ -521,7 +511,7 @@ function Main({logout}){
     h("header",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,padding:"4px 8px"}},
       h("div",null,
         h("h1",{style:{fontSize:18,fontWeight:900,margin:0,background:"linear-gradient(to right,#fff,#94a3b8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"AI広告ジェネレーター"),
-        h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · 実写保持AI背景補正 · "+VER)
+        h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · プロスタジオ背景補正 · "+VER)
       ),
       h("div",{style:{display:"flex",gap:8}},
         h("button",{onClick:()=>setScreen("api"),style:{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.4)",fontSize:10,padding:"6px 12px",borderRadius:20,cursor:"pointer"}},"API設定"),
@@ -639,8 +629,9 @@ function Main({logout}){
       )
     ),
     h("div",{style:G.card},
-      h("div",{style:G.ct},"STEP 5 · AI背景補正・広告画像生成"),
-      h("label",{style:G.lbl},"デザイン雰囲気選択"),
+      h("div",{style:G.ct},"STEP 5 · スタジオ背景補正"),
+      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.35)",marginBottom:10,lineHeight:1.6}},"商品本体はそのまま。背景だけをプロスタジオ環境に自然補正します。"),
+      h("label",{style:G.lbl},"背景スタイル選択"),
       h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}},
         Object.entries(PRESETS).map(([id,p])=>{
           const act=styleMode===id;
@@ -653,11 +644,11 @@ function Main({logout}){
       genLoading&&h(Sp,{msg:genMsg}),
       h("button",{onClick:runDalle,disabled:!canGo,
         style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)",{marginBottom:0})},
-        genLoading?"生成中...":hasApi?"🎨 実写保持で背景補正・広告生成":"🎨 AI背景補正(要API設定)"
+        genLoading?"補正中...":hasApi?"📸 スタジオ背景補正を実行":"📸 スタジオ補正(要API設定)"
       )
     ),
     aiImgUrl&&!genLoading&&h("div",{style:{...G.card,textAlign:"center"}},
-      h("div",{style:G.ct},"🎨 STEP5 AI背景補正 完了"),
+      h("div",{style:G.ct},"📸 STEP5 スタジオ補正 完了"),
       h("img",{src:aiImgUrl,style:{width:"100%",borderRadius:9,marginBottom:11,boxShadow:"0 6px 26px rgba(0,0,0,.5)"}}),
       h("button",{onClick:()=>window.open(aiImgUrl,"_blank"),style:{padding:"11px 22px",borderRadius:8,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",color:"#fff",fontWeight:900,fontSize:13,cursor:"pointer"}},"⬇️ 画像を開く(長押しで保存)")
     ),
