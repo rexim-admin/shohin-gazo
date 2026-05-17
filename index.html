@@ -22,7 +22,7 @@ select option{background:#12121f;}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.1";
+const VER="v2.2.2";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -146,15 +146,42 @@ const STYLE={
 
 async function doDalleGen(b64,catId,subCat,data,key){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
-  // 商品の外観説明を取得
-  const desc=await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:"Describe ONLY what is clearly visible: product type, exact color, shape, any visible text/labels. 2 sentences, English only, no speculation."}]}],200);
   const info=[data.brand,data.mainSpec,subCat,data.catchCopy,data.condition,data.delivery].filter(Boolean).join(", ");
-  const prompt=`Professional Japanese product advertisement, 1:1 square.
-PRODUCT: ${desc.trim()}
-INFO: ${info}
+  const dbText=data.dbText||"";
+  const prompt=`Edit the ORIGINAL uploaded product photo into a Japanese recycle-shop advertisement.
+Keep the exact original appliance photo unchanged.
+DO NOT redraw the appliance.
+DO NOT recreate the appliance.
+Use the original product photo directly.
+Preserve all real details, labels, scratches, buttons, reflections and proportions.
+Photorealistic.
+Real product photo appearance.
+NOT illustration.
+NOT 3D render.
+NOT vector art.
+
+ONLY add:
+- Japanese sale text
+- burst background
+- glow effects
+- shadows
+- delivery banners
+- sale badges
+
+DATABASE INFORMATION:
+${dbText}
+
+ADDITIONAL INFO:
+${info}
+
 STYLE (MANDATORY): ${STYLE[catId]||STYLE.other}
-RULES: product cleanly extracted from background with no white halo, natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
-Quality: professional Photoshop-level Japanese used goods ad.`;
+
+Large clear Japanese advertisement layout.
+NO watermarks.
+NO fake specifications.
+Model numbers are NOT capacity values.
+Never infer capacity from model numbers.
+${data.urgent?"Add a large red starburst with 激安 text.":""}`;
 
   const r=await fetch("https://api.openai.com/v1/images/generations",{
     method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
@@ -434,8 +461,15 @@ function Main({logout}){
     if(!hasApi){setError("OpenAI APIキーが必要です");return;}
     setGenLoading(true);setGenMsg("🤖 商品を解析中...");setError("");setAiImgUrl(null);
     try{
-      const data={brand:ocrData?.brand,mainSpec,catchCopy,condition,delivery,urgent};
-      setGenMsg("🎨 DALL-E 3で生成中(20〜40秒)...");
+      let dbText=descResult;
+      if(!dbText){
+        setGenMsg("📝 商品説明データベース生成中...");
+        const ui={状態:condition,配送:delivery,カテゴリ:isOther?freeCat:subCat,スペック:mainSpec,付属品:accessories,傷状態:scratchNote,値下げ:negotiable?"応相談":"",キャッチコピー:catchCopy};
+        dbText=await doDesc(ocrData||{},ui,images[0].b64,apiKey);
+        setDescResult(dbText);
+      }
+      const data={brand:ocrData?.brand,mainSpec,catchCopy,condition,delivery,urgent,dbText};
+      setGenMsg("🎨 実写保持モードで広告生成中(20〜40秒)...");
       const url=await doDalleGen(images[0].b64,catId,isOther?freeCat:subCat,data,apiKey);
       setAiImgUrl(url);
     }catch(e){setError("AI生成: "+e.message);}
