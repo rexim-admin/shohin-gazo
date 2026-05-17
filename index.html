@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>中古販売CTRエンジン v2.2.7</title>
+<title>中古販売CTRエンジン v2.2.8</title>
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
@@ -19,7 +19,7 @@ input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
-const VER="v2.2.7";
+const VER="v2.2.8";
 const PW="shop2024";
 const SK="ctr_v2";
 const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
@@ -57,12 +57,16 @@ async function aiOAI(key,msgs,max=800){
 }
 function imgMsg(b64){return{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}};}
 function parseJ(t){const m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("JSON解析失敗");return JSON.parse(m[0]);}
-// OCR + 傷解析を1回のAPIコールで実行(コスト削減・高速化)
+// OCR + 傷解析 + Vision家具推定を1回のAPIコールで実行
 async function doAnalyze(b64s,key){
   const imgParts=b64s.map(b=>imgMsg(b));
   const prompt=`これらの商品画像を総合解析してください。1枚目がメイン商品画像、2枚目以降が詳細・傷の画像です。
 【OCR情報抽出】優先順位順:
 1.型番 2.メーカー 3.容量・サイズ(単位付き) 4.年式 5.消費電力(W) 6.寸法(mm/cm) 7.カテゴリ 8.色 9.シリーズ名
+【Vision家具・デザイン推定】家具やブランド品の場合:
+- 形状・デザイン特徴から推定されるメーカー・ブランド
+- 推定される商品名・シリーズ名
+- デザイン系統 (例: 北欧モダン, ミッドセンチュリー, Eames風, IKEA POANG系, Cobra Chair系)
 【傷・状態解析】2〜4枚目があれば詳細に分析:
 - 全体的な状態グレード
 - 目視できる傷・汚れの箇所と程度
@@ -71,6 +75,7 @@ async function doAnalyze(b64s,key){
 JSONのみ返答:
 {
   "brand":"","model":"","capacity":"","year":"","wattage":"","dimensions":"","category":"","color":"","series":"",
+  "visionStyle":"","visionBrand":"","visionProduct":"",
   "confidence":{"brand":0.0,"model":0.0,"capacity":0.0},
   "rawOCR":"","suggestCatId":"appliance|ikea|apple|dyson|pc|small|other","suggestSubCat":"",
   "specTags":["容量: XX","年式: XXXX","消費電力: XXW","型番: XXXX"],
@@ -90,7 +95,7 @@ async function doModelLookup(model,brand,ocrData,key){
 OCR解析結果(参考): ${JSON.stringify(ocrData)}
 【ルール】
 - 型番から確実に判明する情報を優先してください。
-- OCR結果が型番のスペックと矛盾する場合(例:型番は86LなのにOCRが25L)、型番のスペックを優先してください。
+- OCR結果が型番のスペックと矛盾する場合(例:型番は86LなのにOCRが25L)、型番 the model's specs.
 - 存在しないスペック(例:冷蔵庫で25L、電子レンジで23Wなど)は出力しないでください。
 - 容量、年式、ドア数、色、カテゴリを重点的に確認してください。
 JSONのみ返答:
@@ -106,15 +111,15 @@ JSONのみ返答:
   }catch{return ocrData;}
 }
 // メルカリ商品説明生成(ファクトチェック込み・1回のプロンプトで完結)
-async function doDesc(ocr,userInputs,b64,key){
+async function doDesc(db,userInputs,b64,key){
   const facts=Object.entries({
-    メーカー:ocr.brand,型番:ocr.model,容量:ocr.capacity,
-    年式:ocr.year,消費電力:ocr.wattage,寸法:ocr.dimensions,
-    色:ocr.color,シリーズ:ocr.series,
+    メーカー:db.brand,型番:db.model,容量:db.capacity,
+    年式:db.year,消費電力:db.wattage,寸法:db.dimensions,
+    色:db.color,シリーズ:db.series,推定スタイル:db.visionStyle
   }).filter(([,v])=>v&&v!=="不明"&&v).map(([k,v])=>`${k}: ${v}`).join("\n");
   const userStr=Object.entries(userInputs).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join("\n");
   const prompt=`あなたは中古販売のプロです。以下の情報からメルカリ用商品説明文を生成し、同時にファクトチェックも行ってください。
-【確認済み情報(型番照合済み・これ以外のスペック・機能・付属品の記述は絶対禁止)】
+【確定済みデータベース情報(最優先ソース・これ以外のスペック・機能・付属品の記述は絶対禁止)】
 ${facts||"(なし)"}
 【ユーザー入力情報】
 ${userStr||"(なし)"}
@@ -264,6 +269,10 @@ function OcrPanel({ocr,setOcr}){
           onDelete:()=>setOcr({...ocr,[f.k]:"不明"})})
       )
     ),
+    ocr.visionStyle&&h("div",{style:{marginTop:8,padding:"6px 10px",background:"rgba(16,185,129,.1)",borderRadius:8,border:"1px solid rgba(16,185,129,.2)"}},
+      h("div",{style:{fontSize:9,color:"#10b981",fontWeight:700,marginBottom:2}},"👁️ Vision形状推定"),
+      h("div",{style:{fontSize:11,color:"#fff"}},ocr.visionStyle + (ocr.visionBrand?" ("+ocr.visionBrand+")":""))
+    ),
     ocr.rawOCR&&h("div",{style:{marginTop:6,fontSize:10,color:"rgba(255,255,255,.2)",lineHeight:1.5}},"読み取り: "+ocr.rawOCR.slice(0,120)),
     ocr.suggestSubCat&&h("div",{style:{marginTop:5,fontSize:11,color:"#60a5fa"}},"💡 推奨: "+ocr.suggestSubCat)
   );
@@ -397,7 +406,7 @@ function Main({logout}){
   useEffect(()=>{
     if(ocrData){
       const tags=ocrData.specTags||[];
-      const combined=[ocrData.capacity,ocrData.year,ocrData.model].filter(v=>v&&v!=="不明");
+      const combined=[ocrData.capacity,ocrData.year,ocrData.model,ocrData.visionStyle].filter(v=>v&&v!=="不明");
       const newSpec=[...new Set([...combined,...tags])].join(" ");
       setMainSpec(newSpec);
       if(ocrData.suggestCatId&&CATS[ocrData.suggestCatId])setCatId(ocrData.suggestCatId);
@@ -524,8 +533,9 @@ function Main({logout}){
       )
     ),
     h("div",{style:G.card},
-      h("div",{style:G.ct},"Step 3 · 確定スペック確認"),
-      h("label",{style:G.lbl},"主要スペック(型番から自動同期・手入力も可)"),
+      h("div",{style:G.ct},"Step 3 · 真実DB編集 (確定スペック)"),
+      h("div",{style:{fontSize:10,color:"rgba(255,255,255,.32)",marginBottom:10}},"ここでの編集内容が商品説明と広告画像に直接反映されます"),
+      h("label",{style:G.lbl},"主要スペック・特徴 (型番/Visionから自動同期)"),
       h(SpecTags,{
         value:mainSpec,
         onChange:v=>{setMainSpec(v);setDescResult("");},
@@ -558,7 +568,7 @@ function Main({logout}){
     h(Err,{msg:error}),
     h("div",{style:G.card},
       h("div",{style:G.ct},"STEP 4 · メルカリ商品説明 自動生成"),
-      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:10,lineHeight:1.5}},"ファクトチェック付き・確認できた情報のみで生成します"),
+      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:10,lineHeight:1.5}},"確定DB情報を最優先ソースとして生成します"),
       descLoading&&h(Sp,{msg:"生成・ファクトチェック中..."}),
       h("button",{onClick:runDesc,disabled:descLoading||!images.length||!hasApi,
         style:PB(images.length&&hasApi&&!descLoading?"linear-gradient(135deg,#f59e0b,#ef4444)":"rgba(255,255,255,.05)",images.length&&hasApi&&!descLoading?"#fff":"rgba(255,255,255,.2)",{marginBottom:8,fontSize:13})},
@@ -566,7 +576,7 @@ function Main({logout}){
       ),
       descResult&&!descLoading&&h("div",null,
         h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}},
-          h("span",{style:{fontSize:9,color:"#4ade80",fontWeight:700}},"✅ ファクトチェック済"),
+          h("span",{style:{fontSize:9,color:"#4ade80",fontWeight:700}},"✅ 確定DB反映済み"),
           h("span",{style:{fontSize:10,color:descResult.length>900?"#f87171":descResult.length>600?"#fcd34d":"#4ade80",fontWeight:700}},descResult.length+"文字")
         ),
         h("textarea",{value:descResult,onChange:e=>setDescResult(e.target.value),style:G.ta}),
@@ -591,7 +601,7 @@ function Main({logout}){
       genLoading&&h(Sp,{msg:genMsg}),
       h("button",{onClick:runDalle,disabled:!canGo,
         style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)",{marginBottom:0})},
-        genLoading?"生成中...":hasApi?"🎨 DB情報から広告画像を生成":"🎨 AI広告生成(要API設定)"
+        genLoading?"生成中...":hasApi?"🎨 確定DBから広告画像を生成":"🎨 AI広告生成(要API設定)"
       )
     ),
     aiImgUrl&&!genLoading&&h("div",{style:{...G.card,textAlign:"center"}},
