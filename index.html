@@ -477,8 +477,6 @@ function Main({logout}){
     )
   ),
 
-
-
 // AI画像生成
   async function runDalle(){
     if(!images.length){setError("写真をアップロードしてください");return;}
@@ -568,7 +566,7 @@ function Main({logout}){
 
     // まとめて解析ボタン
     images.length>0&&!imgLoading&&h("button",{onClick:runAnalyze,disabled:analyzing||!hasApi,style:PB(analyzing?"rgba(255,255,255,.06)":"linear-gradient(135deg,#60a5fa,#3b82f6)",analyzing?"rgba(255,255,255,.3)":"#fff",{marginTop:8,marginBottom:0,fontSize:12,padding:"10px"})},
-      analyzing?"🔍 OCR・傷解析中(まとめて実行)...":"STEP2 · "+(ocrData?"再解析(OCR・傷まとめて)":"OCR・傷をまとめて解析する")
+      analyzing?"🔍 OCR・傷解析中(まとめて実行)...":"🔍 "+(ocrData?"再解析(OCR・傷まとめて)":"OCR・傷をまとめて解析する")
     )
   ),
 
@@ -658,7 +656,9 @@ function Main({logout}){
     h("button",{onClick:()=>window.open(aiImgUrl,"_blank"),style:{padding:"11px 22px",borderRadius:8,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",color:"#fff",fontWeight:900,fontSize:13,cursor:"pointer"}},"⬇️ 画像を開く(長押しで保存)")
   ),
 
-    h("div",{style:{height:14}})
+  
+
+  h("div",{style:{height:14}})
   ));
 }
 
