@@ -3,72 +3,105 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>メルカリAI広告生成</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<title>中古販売CTRエンジン v2.2.4</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;700;900&family=Montserrat:wght@700;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f172a;color:#f8fafc;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+body{margin:0;font-family:'Noto Sans JP',sans-serif;background:#090912;color:#eee;user-select:none;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
 *{box-sizing:border-box}
 .sp{width:24px;height:24px;border:3px solid rgba(255,215,0,.3);border-top-color:#FFD700;border-radius:50%;animation:s 1s linear infinite;margin:0 auto 8px}
 @keyframes s{to{transform:rotate(360deg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 input::placeholder,textarea::placeholder{color:rgba(255,255,255,.2)}
 </style>
 </head>
-<body>
-<div id="R"></div>
+<body><div id="R"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
-const {useState,useEffect,useMemo,useCallback}=React;
+"use strict";
+const VER="v2.2.4";
+const PW="shop2024";
+const SK="ctr_v2";
+const FH="'M PLUS 1p','Noto Sans JP',sans-serif";
+const FE="'Montserrat','Noto Sans JP',sans-serif";
+const FJ="'Noto Sans JP',sans-serif";
+const {useState,useRef,useCallback}=React;
 const h=React.createElement;
-
-// ── 設定・定数 ────────────────────────────
-const VER="v2.2.3";
+const load=()=>{try{return JSON.parse(localStorage.getItem(SK)||"{}");}catch{return{};}};
+const save=(o)=>{try{const c=load();localStorage.setItem(SK,JSON.stringify({...c,...o}));}catch{}};
 const G={
-  bg:"#0f172a",
-  card:{background:"rgba(255,255,255,.03)",borderRadius:16,padding:16,marginBottom:16,border:"1px solid rgba(255,255,255,.06)"},
-  ct:{fontSize:14,fontWeight:900,marginBottom:12,color:"#FFD700",display:"flex",alignItems:"center",gap:6},
-  lbl:{display:"block",fontSize:11,fontWeight:700,color:"rgba(255,255,255,.4)",marginBottom:4,marginTop:8},
-  inp:{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"10px 12px",color:"#fff",fontSize:14,outline:"none"},
-  ta:{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"10px 12px",color:"#fff",fontSize:13,outline:"none",minHeight:120,lineHeight:1.6,resize:"none"},
-  sel:{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"10px 12px",color:"#fff",fontSize:14,outline:"none",appearance:"none",marginBottom:9},
-  err:{background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.2)",color:"#f87171",padding:10,borderRadius:8,fontSize:12,marginBottom:12}
+  bg:"linear-gradient(150deg,#090912,#0d0d1e,#07070f)",
+  card:{background:"rgba(255,255,255,.047)",borderRadius:13,padding:"13px 15px",marginBottom:10,border:"1px solid rgba(255,255,255,.063)"},
+  ct:{fontSize:10,color:"#FFD700",fontWeight:700,marginBottom:8,letterSpacing:1.5,textTransform:"uppercase"},
+  inp:{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.11)",background:"rgba(255,255,255,.054)",color:"#fff",fontSize:14,outline:"none",boxSizing:"border-box"},
+  sel:{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid rgba(255,255,255,.11)",background:"rgba(255,255,255,.054)",color:"#fff",fontSize:14,marginBottom:9,outline:"none"},
+  ta:{width:"100%",padding:"11px 13px",borderRadius:9,border:"1px solid rgba(255,255,255,.09)",background:"rgba(0,0,0,.3)",color:"#ddd",fontSize:13,outline:"none",boxSizing:"box-sizing",resize:"vertical",lineHeight:1.8,minHeight:200},
+  err:{background:"rgba(220,38,38,.09)",border:"1px solid rgba(220,38,38,.3)",borderRadius:8,padding:"9px 13px",marginBottom:10,color:"#fca5a5",fontSize:12},
+  lbl:{display:"block",fontSize:11,color:"#666",marginBottom:3},
 };
-const PB=(bg,c,ex={})=>({width:"100%",padding:"14px",borderRadius:12,background:bg,color:c,border:"none",fontSize:15,fontWeight:900,cursor:"pointer",transition:".2s",display:"flex",alignItems:"center",justifyContent:"center",gap:8,...ex});
-
-// ── AI API ──────────────────────────────
-async function aiOAI(key,messages,max=800){
-  const r=await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
-    body:JSON.stringify({model:"gpt-4o",messages,max_tokens:max,temperature:.7})
-  });
+const PB=(bg,fc,ex)=>({width:"100%",padding:"13px",borderRadius:11,background:bg,border:"none",color:fc,fontWeight:900,fontSize:14,cursor:"pointer",marginBottom:9,...(ex||{})});
+const CATS={
+  appliance:{l:"🏠 白物家電",c:"#FF8C00",subs:["冷蔵庫","洗濯機","電子レンジ","オーブンレンジ","エアコン","テレビ","モニター","炊飯器","掃除機","ロボット掃除機","空気清浄機","加湿器","除湿機","扇風機","ヒーター","食洗機","IHクッキングヒーター","ガスコンロ","ホットプレート","その他"]},
+  ikea:{l:"🪑 IKEA・家具",c:"#0058A3",subs:["IKEAソファ","IKEAソファカバー","IKEAテーブル","IKEAサイドテーブル","IKEAチェスト","IKEA照明","IKEA雑貨","ダイニングテーブル","椅子","ベッド","収納家具","ラグ","ブランド家具","その他"]},
+  apple:{l:"🍎 Apple",c:"#aaa",subs:["iPhone","iPad","iPad mini","iPad Air","iPad Pro","iPod touch","iPod classic","iPod nano","MacBook","MacBook Air","MacBook Pro","iMac","Mac mini","Apple Watch","AirPods","Apple TV","純正アクセサリ","その他Apple"]},
+  dyson:{l:"💜 Dyson",c:"#9333ea",subs:["Dyson掃除機(コードレス)","Dyson掃除機(コード式)","Dyson空気清浄機","Dysonドライヤー","Dyson扇風機","Dysonヒーター","その他Dyson"]},
+  pc:{l:"💻 PC・ガジェット",c:"#3b82f6",subs:["ノートPC","デスクトップPC","ゲーミングPC","タブレット","Androidスマホ","Wi-Fiルーター","プリンター","PCパーツ","ゲーミングモニター","キーボード","マウス","ヘッドホン","スピーカー","カメラ","プロジェクター","その他"]},
+  small:{l:"🔌 小物・付属品",c:"#f59e0b",subs:["ACアダプター","充電器","ケーブル","リモコン","電源タップ","ハンディ掃除機","その他小物"]},
+  other:{l:"📦 その他",c:"#6b7280",subs:["フリー入力"]},
+};
+// ── AI ────────────────────────────────────
+async function aiOAI(key,msgs,max=800){
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},body:JSON.stringify({model:"gpt-4o",max_tokens:max,messages:msgs})});
   const d=await r.json();if(d.error)throw new Error(d.error.message);
   return d.choices[0].message.content;
 }
-const imgMsg=(b64)=>({type:"image_url",image_url:{url:`data:image/jpeg;base64,${b64}`}});
-
+function imgMsg(b64){return{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}};}
+function parseJ(t){const m=t.match(/\{[\s\S]*\}/);if(!m)throw new Error("JSON解析失敗");return JSON.parse(m[0]);}
+// OCR + 傷解析を1回のAPIコールで実行(コスト削減・高速化)
+async function doAnalyze(b64s,key){
+  const imgParts=b64s.map(b=>imgMsg(b));
+  const prompt=`これらの商品画像を総合解析してください。1枚目がメイン商品画像、2枚目以降が詳細・傷の画像です。
+【OCR情報抽出】優先順位順:
+1.型番 2.メーカー 3.容量・サイズ(単位付き) 4.年式 5.消費電力(W) 6.寸法(mm/cm) 7.カテゴリ 8.色 9.シリーズ名
+【傷・状態解析】2〜4枚目があれば詳細に分析:
+- 全体的な状態グレード
+- 目視できる傷・汚れの箇所と程度
+- 変色・焼け・錆の有無
+厳守: 読めない情報は"不明"。推測禁止。
+JSONのみ返答:
+{
+  "brand":"","model":"","capacity":"","year":"","wattage":"","dimensions":"","category":"","color":"","series":"",
+  "confidence":{"brand":0.0,"model":0.0,"capacity":0.0},
+  "rawOCR":"","suggestCatId":"appliance|ikea|apple|dyson|pc|small|other","suggestSubCat":"",
+  "specTags":["容量: XX","年式: XXXX","消費電力: XXW","型番: XXXX"],
+  "scratchGrade":"美品|良品|やや使用感あり|使用感あり",
+  "scratchDetail":"傷・状態の詳細説明",
+  "scratchShort":"短め1〜2行の状態説明文",
+  "scratchStandard":"標準3〜4行の状態説明文(メルカリ用)",
+  "scratchDetailed":"詳細5〜6行の状態説明文(メルカリ用)"
+}`;
+  const text=await aiOAI(key,[{role:"user",content:[...imgParts,{type:"text",text:prompt}]}],1100);
+  return parseJ(text);
+}
+// メルカリ商品説明生成(ファクトチェック込み・1回のプロンプトで完結)
 async function doDesc(ocr,userInputs,b64,key){
   const facts=Object.entries({
     メーカー:ocr.brand,型番:ocr.model,容量:ocr.capacity,
     年式:ocr.year,消費電力:ocr.wattage,寸法:ocr.dimensions,
     色:ocr.color,シリーズ:ocr.series,
   }).filter(([,v])=>v&&v!=="不明"&&v).map(([k,v])=>`${k}: ${v}`).join("\n");
-
   const userStr=Object.entries(userInputs).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join("\n");
-
   const prompt=`あなたは中古販売のプロです。以下の情報からメルカリ用商品説明文を生成し、同時にファクトチェックも行ってください。
-
 【確認済み情報(これ以外のスペック・機能・付属品の記述は絶対禁止)】
 ${facts||"(なし)"}
-
 【ユーザー入力情報】
 ${userStr||"(なし)"}
-
 【出力スタイル・構成】
 1. 冒頭に型番・商品名(1行)
 2. ✅ 箇条書きで特徴・ポイント(3〜5個、確認できた情報のみ)
 3. 【商品の状態】(傷・汚れを具体的に、ユーザー入力の傷情報を優先)
 4. 【付属品】(ユーザーが付属品を入力した場合のみ記載)
 5. 最後に「ご不明点がございましたらお気軽にお問い合わせください！」
-
 【ルール】
 - 絵文字は適度に(1段落に1〜2個まで、✅は箇条書きのみ)
 - 目標600〜900文字
@@ -76,10 +109,8 @@ ${userStr||"(なし)"}
 - 「〜と思われます」「〜でしょう」などの推測表現禁止
 - ファクトチェック結果やシステムメッセージは出力に含めない
 - 説明文本文のみを出力する(注釈・補足・見出し不要)`;
-
   return (await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:prompt}]}],1100)).trim();
 }
-
 // DALL-E 3 生成
 const STYLE={
   appliance:"Japanese used home appliance advertisement flyer. Bright YELLOW-ORANGE radial burst background. Product cleanly placed on right side with drop shadow and floor reflection. Left: large RED bold brand (top), MASSIVE NAVY BLUE capacity number with thick white outline stroke (biggest element), ORANGE-RED category name with white outline. Bottom-left dark red delivery banner. Bottom-right explosive red starburst if urgent. Style: professional Hardoff/Jimoty Japanese resale flyer.",
@@ -90,10 +121,8 @@ const STYLE={
   small:"Simple warm yellow background, centered product, clean typography.",
   other:"Clean dark professional background.",
 };
-
 async function doDalleGen(b64,catId,subCat,data,key){
   if(!key||!key.startsWith("sk-"))throw new Error("OpenAI APIキーが必要です");
-  // 商品の外観説明を取得
   const desc=await aiOAI(key,[{role:"user",content:[imgMsg(b64),{type:"text",text:"Describe ONLY what is clearly visible: product type, exact color, shape, any visible text/labels. 2 sentences, English only, no speculation."}]}],200);
   const info=[data.brand,data.mainSpec,subCat,data.catchCopy,data.condition,data.delivery].filter(Boolean).join(", ");
   const dbText=data.dbText||"";
@@ -123,19 +152,17 @@ ONLY add:
 - shadows
 - delivery banners
 - sale badges
-- product cleanly extracted from background with no white halo, natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags.${data.urgent?" Large red starburst with '激安' text.":""}
+- natural drop shadow and floor shadow, large clear Japanese ad text, NO watermarks, NO price tags, product color/shape must exactly match photo.${data.urgent?" Large red starburst with '激安' text.":""}
 Quality: professional Photoshop-level Japanese used goods ad.`;
-
   const r=await fetch("https://api.openai.com/v1/images/generations",{
     method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
-    body:JSON.stringify({model:"dall-e-3",prompt:prompt.substring(0,3900),size:"1024x1024"})
+    body:JSON.stringify({model:"gpt-image-1",prompt:prompt.substring(0,3900),size:"1024x1024"})
   });
   const d=await r.json();if(d.error)throw new Error(d.error.message);
   if(d.data?.[0]?.url)return d.data[0].url;
   if(d.data?.[0]?.b64_json)return "data:image/png;base64,"+d.data[0].b64_json;
   throw new Error("画像生成レスポンス異常");
 }
-
 // ── 画像をリサイズしてbase64に ────────────
 function imgToB64(file,maxSize=900){
   return new Promise((res,rej)=>{
@@ -154,11 +181,9 @@ function imgToB64(file,maxSize=900){
     reader.onerror=rej;reader.readAsDataURL(file);
   });
 }
-
 // ── コンポーネント ────────────────────────
 function Sp({msg}){return h("div",{style:{textAlign:"center",padding:14}},h("div",{className:"sp"}),msg&&h("div",{style:{color:"#FFD700",fontSize:11,fontWeight:700}},msg));}
 function Err({msg}){return msg?h("div",{style:G.err},msg):null;}
-
 // OCRタグ(タップで編集・×で削除)
 function OcrTag({label,value,mono,conf,onChange,onDelete}){
   const [ed,setEd]=useState(false);
@@ -176,84 +201,191 @@ function OcrTag({label,value,mono,conf,onChange,onDelete}){
     h("span",{onClick:e=>{e.stopPropagation();onDelete();},style:{marginLeft:4,color:"rgba(255,255,255,.2)",fontSize:14}},"×")
   );
 }
-
-function Login({ok}){
-  const [k,setK]=useState(localStorage.getItem("oai_key")||"");
-  const save=()=>{if(k.startsWith("sk-")){localStorage.setItem("oai_key",k);ok();}else alert("有効なAPIキーを入力してください");};
-  return h("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:G.bg}},
-    h("div",{style:{width:"100%",maxWidth:360,textAlign:"center"}},
-      h("div",{style:{fontSize:32,marginBottom:8}},"🎨"),
-      h("h1",{style:{fontSize:20,fontWeight:900,marginBottom:24}},"メルカリAI広告生成"),
-      h("div",{style:G.card},
-        h("label",{style:G.lbl},"OpenAI API Key"),
-        h("input",{type:"password",placeholder:"sk-...",value:k,onChange:e=>setK(e.target.value),style:{...G.inp,textAlign:"center",marginBottom:16}}),
-        h("button",{onClick:save,style:PB("linear-gradient(135deg,#6366f1,#4f46e5)","#fff")},"利用開始")
+// OCR結果パネル
+function OcrPanel({ocr,setOcr}){
+  if(!ocr)return null;
+  const fields=[
+    {k:"brand",l:"メーカー"},{k:"model",l:"型番"},{k:"capacity",l:"容量/サイズ",mono:true},
+    {k:"year",l:"年式"},{k:"color",l:"色"},{k:"series",l:"シリーズ"},
+    {k:"wattage",l:"消費電力"},{k:"dimensions",l:"寸法"},
+  ];
+  const conf=ocr.confidence||{};
+  return h("div",{style:G.card},
+    h("div",{style:G.ct},"AI解析結果 (タップで編集)"),
+    h("div",{style:{display:"flex",flexWrap:"wrap"}},
+      fields.map(f=>
+        h(OcrTag,{key:f.k,label:f.l,value:ocr[f.k],mono:f.mono,conf:conf[f.k],
+          onChange:v=>setOcr({...ocr,[f.k]:v}),
+          onDelete:()=>setOcr({...ocr,[f.k]:"不明"})})
+      )
+    ),
+    ocr.rawOCR&&h("div",{style:{marginTop:6,fontSize:10,color:"rgba(255,255,255,.2)",lineHeight:1.5}},"読み取り: "+ocr.rawOCR.slice(0,120)),
+    ocr.suggestSubCat&&h("div",{style:{marginTop:5,fontSize:11,color:"#60a5fa"}},"💡 推奨: "+ocr.suggestSubCat)
+  );
+}
+// スペック追加タグ入力(追加式・重複なし)
+function SpecTags({value,onChange,suggestions}){
+  const tags=value?value.split(" ").filter(t=>t.trim()):[];
+  function addTag(t){
+    const trimmed=t.trim();
+    if(!trimmed||tags.includes(trimmed))return;
+    onChange([...tags,trimmed].join(" "));
+  }
+  function removeTag(i){onChange(tags.filter((_,j)=>j!==i).join(" "));}
+  return h("div",null,
+    suggestions&&suggestions.length>0&&h("div",{style:{marginBottom:6}},
+      h("div",{style:{fontSize:10,color:"#888",marginBottom:4}},"タップで追加(重複は無視されます)"),
+      h("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+        suggestions.map((s,i)=>h("button",{key:i,
+          onClick:()=>addTag(s),
+          style:{padding:"5px 11px",borderRadius:7,
+            background:tags.includes(s)?"rgba(255,215,0,.18)":"rgba(255,215,0,.07)",
+            border:tags.includes(s)?"1px solid rgba(255,215,0,.5)":"1px solid rgba(255,215,0,.18)",
+            color:tags.includes(s)?"#FFD700":"#fcd34d",fontSize:11,cursor:"pointer"}},s))
+      )
+    ),
+    tags.length>0&&h("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}},
+      tags.map((t,i)=>h("span",{key:i,style:{display:"inline-flex",alignItems:"center",gap:4,padding:"4px 10px",background:"rgba(255,255,255,.09)",border:"1px solid rgba(255,255,255,.18)",borderRadius:8,fontSize:11,color:"rgba(255,255,255,.85)"}},
+        t,
+        h("button",{onClick:()=>removeTag(i),style:{background:"none",border:"none",color:"rgba(255,100,100,.7)",cursor:"pointer",fontSize:11,lineHeight:1,padding:0}},"×")
+      ))
+    ),
+    h("input",{
+      placeholder:"手入力して Enterで追加",
+      style:{...G.inp,fontSize:13},
+      onKeyDown:e=>{if(e.key==="Enter"&&e.target.value.trim()){addTag(e.target.value.trim());e.target.value="";e.preventDefault();}}
+    })
+  );
+}
+// 傷解析結果パネル
+function ScratchPanel({ocr,onSelect}){
+  if(!ocr||!ocr.scratchGrade)return null;
+  return h("div",{style:{...G.card,background:"rgba(245,158,11,.05)",border:"1px solid rgba(245,158,11,.18)"}},
+    h("div",{style:{...G.ct,color:"#f59e0b"}},"傷・状態解析結果"),
+    h("div",{style:{fontSize:12,color:"#fcd34d",marginBottom:8,fontWeight:700}},"総合評価: "+ocr.scratchGrade),
+    ocr.scratchDetail&&h("div",{style:{fontSize:11,color:"rgba(255,255,255,.55)",marginBottom:10,lineHeight:1.6}},ocr.scratchDetail),
+    ["Short","Standard","Detailed"].map(k=>{
+      const key="scratch"+k;
+      const labels={Short:"短め",Standard:"標準",Detailed:"詳細"};
+      if(!ocr[key])return null;
+      return h("div",{key:k,style:{marginBottom:8}},
+        h("div",{style:{fontSize:10,color:"rgba(255,255,255,.38)",marginBottom:3}},labels[k]),
+        h("div",{style:{background:"rgba(0,0,0,.22)",borderRadius:7,padding:"8px 10px",fontSize:12,color:"rgba(255,255,255,.72)",lineHeight:1.6,whiteSpace:"pre-wrap"}},ocr[key]),
+        h("button",{onClick:()=>onSelect(ocr[key]),style:{padding:"5px 13px",borderRadius:6,background:"rgba(245,158,11,.14)",border:"1px solid rgba(245,158,11,.28)",color:"#f59e0b",fontSize:11,cursor:"pointer",marginTop:4}},"この文を使う")
+      );
+    })
+  );
+}
+// ── API PAGE ──────────────────────────────
+function ApiPage({apiKey,onSave,back}){
+  const [key,setKey]=useState(apiKey);const [saved,setSaved]=useState(false);
+  const valid=key.startsWith("sk-")&&key.length>20;
+  const conn=apiKey&&apiKey.startsWith("sk-");
+  function doSave(){onSave(key);setSaved(true);setTimeout(()=>setSaved(false),2000);}
+  return h("div",{style:{minHeight:"100vh",background:G.bg,padding:20}},
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:20}},
+      h("button",{onClick:back,style:{background:"none",border:"none",color:"#FFD700",fontSize:20,cursor:"pointer"}},"←"),
+      h("h2",{style:{margin:0,fontSize:17,fontWeight:900}},"API設定")
+    ),
+    h("div",{style:G.card},
+      h("div",{style:G.ct},"OpenAI API Key"),
+      h("input",{type:"password",value:key,onChange:e=>setKey(e.target.value),style:{...G.inp,marginBottom:12},placeholder:"sk-proj-..."}),
+      !conn&&h("div",{style:{color:"#f87171",fontSize:10,marginBottom:12}},"⚠️ APIキーが設定されていません。AI機能を利用するには設定してください"),
+      valid&&h("div",{style:{color:"#4ade80",fontSize:10,marginBottom:6}},"✅ 有効な形式"),
+      h("div",{style:{display:"flex",gap:8}},
+        h("button",{onClick:doSave,disabled:!valid,style:PB(valid?"linear-gradient(135deg,#60a5fa,#3b82f6)":"rgba(255,255,255,.06)",valid?"#fff":"rgba(255,255,255,.22)",{flex:2,marginBottom:0})},saved?"✅ 保存しました！":"💾 保存する"),
+        conn&&h("button",{onClick:()=>{setKey("");onSave("");},style:PB("rgba(239,68,68,.1)","#f87171",{flex:1,marginBottom:0,border:"1px solid rgba(239,68,68,.22)"})},"🔌 切断")
       ),
-      h("p",{style:{fontSize:11,color:"rgba(255,255,255,.3)",lineHeight:1.6}},"キーはブラウザにのみ保存されます。\nGPT-4oとDALL-E 3を使用します。")
+      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:8,lineHeight:1.5}},"💡 ブラウザのlocalStorageに保存。料金はOpenAI利用分のみ(解析約2〜5円/回・DALL-E約10〜15円/回)")
+    ),
+    h("div",{style:G.card},
+      h("div",{style:G.ct},"APIキー取得方法"),
+      ["platform.openai.com にアクセス","アカウント作成 or ログイン","左メニュー「API Keys」を開く","「Create new secret key」をクリック","sk-proj-... のキーをコピーして上に貼り付け","クレジットカード登録で従量課金開始"].map((s,i)=>
+        h("div",{key:i,style:{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}},
+          h("div",{style:{background:"#FFD700",color:"#090912",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,flexShrink:0,marginTop:1}},i+1),
+          h("div",{style:{color:"rgba(255,255,255,.55)",fontSize:12,lineHeight:1.5}},s)
+        )
+      )
     )
   );
 }
-
+// ── LOGIN ─────────────────────────────────
+function Login({ok}){
+  const [pw,setPw]=useState("");const [err,setErr]=useState(false);const [sh,setSh]=useState(false);
+  function go(){if(pw===PW)ok();else{setErr(true);setSh(true);setPw("");setTimeout(()=>setSh(false),420);}}
+  return h("div",{style:{minHeight:"100vh",background:G.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}},
+    h("div",{style:{textAlign:"center",marginBottom:22}},
+      h("div",{style:{fontSize:38,marginBottom:7}},"🏷️"),
+      h("h1",{style:{fontSize:19,fontWeight:900,background:"linear-gradient(90deg,#FFD700,#FF8C00)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",margin:"0 0 4px"}},"中古販売CTRエンジン"),
+      h("div",{style:{fontSize:11,color:"rgba(255,255,255,.22)"}},VER)
+    ),
+    h("div",{style:{background:"rgba(255,255,255,.044)",borderRadius:17,padding:"30px 22px",border:"1px solid rgba(255,255,255,.068)",width:"100%",maxWidth:290,textAlign:"center",animation:sh?"shake .4s":"none"}},
+      h("p",{style:{color:"rgba(255,255,255,.32)",fontSize:12,marginBottom:14}},"スタッフ専用"),
+      h("input",{type:"password",placeholder:"パスワードを入力",value:pw,onChange:e=>setPw(e.target.value),onKeyDown:e=>e.key==="Enter"&&go(),style:{...G.inp,textAlign:"center",marginBottom:15,border:err?"1px solid #ef4444":"1px solid rgba(255,255,255,.1)"}}),
+      h("button",{onClick:go,style:PB("linear-gradient(135deg,#FFD700,#FF8C00)","#000")},"ログイン")
+    )
+  );
+}
+// ── MAIN ──────────────────────────────────
 function Main({logout}){
-  const apiKey=localStorage.getItem("oai_key");
-  const hasApi=!!apiKey;
+  const init=load();
+  const [screen,setScreen]=useState("main");
+  const [apiKey,setApiKey]=useState(init.apiKey||"");
   const [images,setImages]=useState([]);
+  const [imgLoading,setImgLoading]=useState(false);
   const [analyzing,setAnalyzing]=useState(false);
   const [ocrData,setOcrData]=useState(null);
   const [catId,setCatId]=useState("appliance");
+  const [subCat,setSubCat]=useState("");
   const [freeCat,setFreeCat]=useState("");
-  const [mainSpec,setMainSpec]=useState("");
-  const [catchCopy,setCatchCopy]=useState("");
   const [condition,setCondition]=useState("");
   const [delivery,setDelivery]=useState("");
-  const [accessories,setAccessories]=useState("");
-  const [scratchNote,setScratchNote]=useState("");
   const [negotiable,setNegotiable]=useState(false);
   const [urgent,setUrgent]=useState(false);
+  const [mainSpec,setMainSpec]=useState("");
+  const [catchCopy,setCatchCopy]=useState("");
+  const [accessories,setAccessories]=useState("");
+  const [scratchNote,setScratchNote]=useState("");
   const [genLoading,setGenLoading]=useState(false);
   const [genMsg,setGenMsg]=useState("");
   const [aiImgUrl,setAiImgUrl]=useState(null);
-  const [descLoading,setDescLoading]=useState(false);
-  const [descResult,setDescResult]=useState("");
   const [error,setError]=useState("");
+  const [descResult,setDescResult]=useState("");
+  const [descLoading,setDescLoading]=useState(false);
   const [copied,setCopied]=useState(false);
-
-  const isOther=catId==="other";
-  const subCat=isOther?freeCat:catId;
-
-  // 画像アップロード & 解析
-  const onFile=async e=>{
-    const files=Array.from(e.target.files);if(!files.length)return;
+  const hasApi=apiKey&&apiKey.startsWith("sk-")&&apiKey.length>20;
+  const catTree=CATS[catId];
+  const isOther=subCat==="フリー入力"||subCat==="その他"||catId==="other";
+  function handleApiSave(k){setApiKey(k);save({apiKey:k});}
+  if(screen==="api")return h(ApiPage,{apiKey,onSave:handleApiSave,back:()=>setScreen("main")});
+  async function handlePhotos(ev){
+    const files=Array.from(ev.target.files||[]);
+    if(!files.length)return;
+    if(images.length+files.length>4){setError("最大4枚まで登録できます");return;}
+    if(!hasApi){setError("画像の登録にはOpenAI APIキーが必要です");return;}
+    setImgLoading(true);setError("");
+    try{
+      const results=await Promise.all(files.slice(0,4-images.length).map(f=>imgToB64(f,900)));
+      setImages(prev=>[...prev,...results]);
+      setOcrData(null);setAiImgUrl(null);setDescResult("");
+    }catch(e){setError("画像処理エラー: "+e.message);}
+    setImgLoading(false);ev.target.value="";
+  }
+  function removeImg(i){setImages(prev=>prev.filter((_,j)=>j!==i));setOcrData(null);}
+  function moveToFirst(i){setImages(prev=>{const a=[...prev];const [el]=a.splice(i,1);a.unshift(el);return a;});}
+  async function runAnalyze(){
+    if(!images.length){setError("写真をアップロードしてください");return;}
+    if(!hasApi){setError("解析にはOpenAI APIキーが必要です");return;}
     setAnalyzing(true);setError("");
     try{
-      const res=await imgToB64(files[0]);
-      setImages([res]);
-      // OCR & 解析
-      const prompt=`Analyze this product image for resale. Return JSON only:
-{
-  "brand": "maker name",
-  "model": "model number",
-  "capacity": "L or kg if appliance",
-  "year": "manufacture year",
-  "wattage": "W",
-  "dimensions": "WxDxH",
-  "color": "main color",
-  "series": "product series",
-  "category": "appliance|apple|dyson|pc|ikea|small|other",
-  "suggested_catch": "short catchy Japanese phrase",
-  "main_spec": "most important spec (e.g. 137L, 8kg, M1 Max)"
-}`;
-      const json=await aiOAI(apiKey,[{role:"user",content:[imgMsg(res.b64),{type:"text",text:prompt}]}],500);
-      const data=JSON.parse(json.replace(/```json|```/g,""));
-      setOcrData(data);
-      if(data.category)setCatId(data.category);
-      if(data.suggested_catch)setCatchCopy(data.suggested_catch);
-      if(data.main_spec)setMainSpec(data.main_spec);
-    }catch(e){setError("解析失敗: "+e.message);}
+      const ocr=await doAnalyze(images.map(i=>i.b64),apiKey);
+      setOcrData(ocr);
+      if(ocr.suggestCatId&&CATS[ocr.suggestCatId])setCatId(ocr.suggestCatId);
+      if(ocr.suggestSubCat)setSubCat(ocr.suggestSubCat);
+      if(!mainSpec&&ocr.capacity&&ocr.capacity!=="不明")setMainSpec(ocr.capacity);
+    }catch(e){setError("解析エラー: "+e.message);}
     setAnalyzing(false);
-  };
-
-  // AI画像生成
+  }
   async function runDalle(){
     if(!images.length){setError("写真をアップロードしてください");return;}
     if(!hasApi){setError("OpenAI APIキーが必要です");return;}
@@ -273,8 +405,6 @@ function Main({logout}){
     }catch(e){setError("AI生成: "+e.message);}
     setGenLoading(false);setGenMsg("");
   }
-
-  // 説明文生成
   async function runDesc(){
     if(!images.length){setError("写真をアップロードしてください");return;}
     if(!hasApi){setError("OpenAI APIキーが必要です");return;}
@@ -286,63 +416,71 @@ function Main({logout}){
     }catch(e){setError("説明文: "+e.message);}
     setDescLoading(false);
   }
-
   const canGo=images.length>0&&hasApi&&!genLoading&&!analyzing;
-
   return h("div",{style:{minHeight:"100vh",background:G.bg,padding:12}},
     h("header",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,padding:"4px 8px"}},
       h("div",null,
         h("h1",{style:{fontSize:18,fontWeight:900,margin:0,background:"linear-gradient(to right,#fff,#94a3b8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}},"AI広告ジェネレーター"),
         h("p",{style:{color:"rgba(255,255,255,.22)",fontSize:9,margin:"1px 0 0"}},"GPT-4o · 実写保持AI広告 · "+VER)
       ),
-      h("button",{onClick:logout,style:{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.4)",fontSize:10,padding:"6px 12px",borderRadius:20,cursor:"pointer"}},"ログアウト")
-    ),
-
-    // STEP 1: 写真
-    h("div",{style:G.card},
-      h("div",{style:G.ct},"📸 STEP 1 · 商品写真をアップロード"),
-      h("div",{style:{display:"flex",gap:10,overflowX:"auto",paddingBottom:4}},
-        images.map((img,i)=>h("div",{key:i,style:{position:"relative",flexShrink:0}},
-          h("img",{src:img.src,style:{width:80,height:80,objectFit:"cover",borderRadius:12,border:"2px solid #FFD700"}}),
-          h("div",{onClick:()=>setImages([]),style:{position:"absolute",top:-5,right:-5,background:"#ef4444",color:"#fff",width:20,height:20,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,cursor:"pointer",fontWeight:900}},"×")
-        )),
-        h("label",{style:{width:80,height:80,borderRadius:12,background:"rgba(255,255,255,.05)",border:"2px dashed rgba(255,255,255,.1)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}},
-          h("span",{style:{fontSize:24,marginBottom:2}},"+"),
-          h("span",{style:{fontSize:9,fontWeight:700,color:"rgba(255,255,255,.4)"}},"追加"),
-          h("input",{type:"file",accept:"image/*",onChange:onFile,style:{display:"none"}})
-        )
-      ),
-      analyzing&&h(Sp,{msg:"AIが写真を解析しています..."})
-    ),
-
-    // STEP 2: 解析結果
-    ocrData&&h("div",{style:G.card},
-      h("div",{style:G.ct},"🔍 STEP 2 · AI解析結果 (タップで修正)"),
-      h("div",{style:{display:"flex",flexWrap:"wrap"}},
-        Object.entries(ocrData).map(([k,v])=>{
-          if(["category","suggested_catch","main_spec"].includes(k)) return null;
-          return h(OcrTag,{key:k,label:k,value:v,onChange:nv=>setOcrData({...ocrData,[k]:nv}),onDelete:()=>setOcrData({...ocrData,[k]:""})});
-        })
+      h("div",{style:{display:"flex",gap:8}},
+        h("button",{onClick:()=>setScreen("api"),style:{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.4)",fontSize:10,padding:"6px 12px",borderRadius:20,cursor:"pointer"}},"API設定"),
+        h("button",{onClick:logout,style:{background:"rgba(255,255,255,.05)",border:"none",color:"rgba(255,255,255,.4)",fontSize:10,padding:"6px 12px",borderRadius:20,cursor:"pointer"}},"ログアウト")
       )
     ),
-
-    // STEP 3: 入力
     h("div",{style:G.card},
-      h("div",{style:G.ct},"📝 STEP 3 · 広告・出品情報の詳細"),
-      h("label",{style:G.lbl},"デザイン・カテゴリ"),
-      h("select",{value:catId,onChange:e=>setCatId(e.target.value),style:G.sel},
-        h("option",{value:"appliance"},"家電チラシ風 (オレンジ)"),
-        h("option",{value:"apple"},"Apple風 (ミニマル)"),
-        h("option",{value:"dyson"},"Dyson風 (高級感)"),
-        h("option",{value:"pc"},"ゲーミングPC風 (サイバー)"),
-        h("option",{value:"ikea"},"IKEA風 (北欧)"),
-        h("option",{value:"small"},"小物・雑貨 (シンプル)"),
-        h("option",{value:"other"},"その他 (自由入力)")
+      h("div",{style:G.ct},"Step 1 · 商品写真 (最大4枚)"),
+      h("div",{style:{display:"flex",gap:8,overflowX:"auto",paddingBottom:5}},
+        images.map((img,i)=>h("div",{key:i,style:{position:"relative",flexShrink:0}},
+          h("img",{src:img.src,onClick:()=>moveToFirst(i),style:{width:74,height:74,objectFit:"cover",borderRadius:10,border:i===0?"2px solid #FFD700":"1px solid rgba(255,255,255,.1)",cursor:"pointer"}}),
+          h("div",{onClick:()=>removeImg(i),style:{position:"absolute",top:-4,right:-4,background:"#ef4444",color:"#fff",width:18,height:18,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,cursor:"pointer",fontWeight:900}},"×"),
+          i===0&&h("div",{style:{position:"absolute",bottom:0,left:0,right:0,background:"rgba(255,215,0,.8)",color:"#000",fontSize:8,textAlign:"center",fontWeight:900,borderBottomLeftRadius:8,borderBottomRightRadius:8}},"メイン")
+        )),
+        images.length<4&&h("label",{style:{width:74,height:74,borderRadius:10,background:"rgba(255,255,255,.03)",border:"2px dashed rgba(255,255,255,.08)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}},
+          h("span",{style:{fontSize:20,color:"rgba(255,255,255,.2)"}},"+"),
+          h("input",{type:"file",accept:"image/*",multiple:true,onChange:handlePhotos,style:{display:"none"}})
+        )
       ),
-      isOther&&h("input",{placeholder:"カテゴリ名を入力 (例: スニーカー)",value:freeCat,onChange:e=>setFreeCat(e.target.value),style:{...G.inp,marginBottom:9}}),
-      h("label",{style:G.lbl},"主要スペック (画像に大きく表示)"),
-      h("input",{placeholder:"例: 137L, M1 Max, 2023年製",value:mainSpec,onChange:e=>setMainSpec(e.target.value),style:{...G.inp,marginBottom:9}}),
-      h("label",{style:G.lbl},"キャッチコピー"),
+      imgLoading&&h(Sp,{msg:"画像処理中..."}),
+      h("button",{onClick:runAnalyze,disabled:!images.length||analyzing||!hasApi,
+        style:PB(images.length&&!analyzing&&hasApi?"linear-gradient(135deg,#6366f1,#4f46e5)":"rgba(255,255,255,.05)",images.length&&!analyzing&&hasApi?"#fff":"rgba(255,255,255,.2)",{marginTop:12,marginBottom:0,fontSize:13})},
+        analyzing?"解析中...":"🔍 写真をAI解析する"
+      )
+    ),
+    analyzing&&h(Sp,{msg:"OCR + 傷解析を同時実行中..."}),
+    h(OcrPanel,{ocr:ocrData,setOcr:setOcrData}),
+    h(ScratchPanel,{ocr:ocrData,onSelect:t=>{setScratchNote(t);}}),
+    h("div",{style:G.card},
+      h("div",{style:G.ct},"Step 2 · カテゴリ"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:10}},
+        Object.entries(CATS).map(([id,cat])=>{
+          const act=catId===id;
+          return h("button",{key:id,onClick:()=>{setCatId(id);setSubCat("");setFreeCat("");},
+            style:{padding:"8px 4px",borderRadius:9,border:act?`2px solid ${cat.c}`:"1px solid rgba(255,255,255,.07)",background:act?"rgba(255,255,255,.06)":"rgba(255,255,255,.022)",color:act?cat.c:"rgba(255,255,255,.36)",cursor:"pointer",fontWeight:act?700:400,fontSize:11,textAlign:"center"}},
+            cat.l
+          );
+        })
+      ),
+      h("label",{style:G.lbl},"サブカテゴリ"),
+      h("select",{value:subCat,onChange:e=>setSubCat(e.target.value),style:G.sel},
+        h("option",{value:""},"── 選択してください ──"),
+        catTree.subs.map(s=>h("option",{key:s,value:s},s))
+      ),
+      isOther&&h("div",null,
+        h("label",{style:G.lbl},"フリー入力(詳細カテゴリ)"),
+        h("input",{placeholder:"例: スマートウォッチ・ゲーム機・ドライヤー など",value:freeCat,onChange:e=>setFreeCat(e.target.value),style:{...G.inp,marginBottom:0}})
+      )
+    ),
+    h("div",{style:G.card},
+      h("div",{style:G.ct},"Step 3 · 商品情報"),
+      h("label",{style:G.lbl},"主要スペック(タップで追加・手入力も可)"),
+      h(SpecTags,{
+        value:mainSpec,
+        onChange:setMainSpec,
+        suggestions:ocrData?.specTags||[],
+      }),
+      h("div",{style:{marginBottom:9}}),
+      h("label",{style:G.lbl},"キャッチコピー(任意)"),
       h("input",{placeholder:"例: 一人暮らしにぴったり！",value:catchCopy,onChange:e=>setCatchCopy(e.target.value),style:{...G.inp,marginBottom:9}}),
       h("label",{style:G.lbl},"商品の状態"),
       h("select",{value:condition,onChange:e=>setCondition(e.target.value),style:G.sel},
@@ -366,10 +504,8 @@ function Main({logout}){
       )
     ),
     h(Err,{msg:error}),
-
-    // STEP 4: 説明文生成(メルカリのみ・1択)
     h("div",{style:G.card},
-      h("div",{style:G.ct},"📝 STEP 4 · メルカリ商品説明 自動生成"),
+      h("div",{style:G.ct},"STEP 4 · メルカリ商品説明 自動生成"),
       h("div",{style:{fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:10,lineHeight:1.5}},"ファクトチェック付き・確認できた情報のみで生成します"),
       descLoading&&h(Sp,{msg:"生成・ファクトチェック中..."}),
       h("button",{onClick:runDesc,disabled:descLoading||!images.length||!hasApi,
@@ -388,20 +524,16 @@ function Main({logout}){
         )
       )
     ),
-
-    // STEP 5: AI画像生成
     genLoading&&h(Sp,{msg:genMsg}),
     h("button",{onClick:runDalle,disabled:!canGo,
       style:PB(canGo?"linear-gradient(135deg,#10b981,#059669)":"rgba(255,255,255,.06)",canGo?"#fff":"rgba(255,255,255,.22)")},
       genLoading?"生成中...":hasApi?"🎨 STEP5 DB情報から広告画像を生成":"🎨 STEP5 AI広告生成(要API設定)"
     ),
-    // 生成結果
     aiImgUrl&&!genLoading&&h("div",{style:{...G.card,textAlign:"center"}},
       h("div",{style:G.ct},"🎨 STEP5 AI広告生成 完了"),
       h("img",{src:aiImgUrl,style:{width:"100%",borderRadius:9,marginBottom:11,boxShadow:"0 6px 26px rgba(0,0,0,.5)"}}),
       h("button",{onClick:()=>window.open(aiImgUrl,"_blank"),style:{padding:"11px 22px",borderRadius:8,background:"linear-gradient(135deg,#10b981,#059669)",border:"none",color:"#fff",fontWeight:900,fontSize:13,cursor:"pointer"}},"⬇️ 画像を開く(長押しで保存)")
     ),
-
     h("div",{style:{height:14}})
   );
 }
